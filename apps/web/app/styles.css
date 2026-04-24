@@ -1,0 +1,95 @@
+:root {
+  color-scheme: dark;
+  background: #101214;
+  color: #f4f7f8;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #101214;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 64px 24px;
+}
+
+.hero,
+.panel {
+  width: min(880px, 100%);
+  margin: 0 auto;
+}
+
+.hero {
+  padding: 56px 0;
+}
+
+.eyebrow {
+  margin: 0 0 16px;
+  color: #7dd3c7;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 18px;
+  font-size: clamp(3rem, 8vw, 6.5rem);
+  line-height: 0.95;
+}
+
+.lede {
+  max-width: 680px;
+  color: #cbd5d8;
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.actions a {
+  border: 1px solid #334145;
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: #182023;
+  font-weight: 700;
+}
+
+.actions a:first-child {
+  background: #7dd3c7;
+  color: #071011;
+}
+
+.panel {
+  border-top: 1px solid #2b363a;
+  padding-top: 28px;
+  color: #d8e1e4;
+}
+
+.panel small {
+  color: #92a0a5;
+}

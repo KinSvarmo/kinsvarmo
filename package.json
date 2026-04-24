@@ -1,0 +1,18 @@
+{
+  "name": "kingsvarmo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Scientific agent marketplace and execution platform for iNFT-backed analysis workflows.",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @kingsvarmo/web --filter @kingsvarmo/api dev",
+    "dev:web": "pnpm --filter @kingsvarmo/web dev",
+    "dev:api": "pnpm --filter @kingsvarmo/api dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
