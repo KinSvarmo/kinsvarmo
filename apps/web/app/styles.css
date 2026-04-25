@@ -259,6 +259,92 @@ code, pre { font-family: "JetBrains Mono", monospace; }
 .step-label.active { color: var(--text); }
 .step-connector    { flex: 1; height: 1px; background: var(--border); margin: 0 8px; min-width: 24px; }
 
+/* ─── Job status / AXL log ───────────────────────────────────────────────── */
+.job-status-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+
+.module-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.module-status-card {
+  background: rgba(255,255,255,0.035);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  min-height: 128px;
+}
+
+.axl-log-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.axl-log-row {
+  display: grid;
+  grid-template-columns: 140px minmax(110px, 1fr) minmax(110px, 1fr) minmax(180px, 1.2fr);
+  gap: 14px;
+  align-items: center;
+  min-width: 720px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.84rem;
+}
+
+.axl-log-row:first-child {
+  border-top: none;
+}
+
+.axl-log-header {
+  background: rgba(255,255,255,0.035);
+  color: var(--text-3);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.job-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.job-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 0.84rem;
+}
+
+.job-detail-row span {
+  color: var(--text-3);
+}
+
+.job-detail-row strong {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 920px) {
+  .job-status-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .module-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ─── Upload zone ─────────────────────────────────────────────────────────── */
 .upload-zone {
   border: 2px dashed var(--border);

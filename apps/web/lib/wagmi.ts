@@ -1,10 +1,12 @@
 import { createConfig, http } from "wagmi";
-import { injected } from "wagmi/connectors";
 import { ogTestnet } from "./chain";
+import { browserInjected } from "./injectedConnector";
+
+export const injectedConnector = browserInjected();
 
 export const wagmiConfig = createConfig({
   chains: [ogTestnet],
-  connectors: [injected()],
+  connectors: [injectedConnector],
   transports: {
     [ogTestnet.id]: http(),
   },

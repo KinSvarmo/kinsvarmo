@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi";
-import { injected } from "wagmi/connectors";
 import { ogTestnet } from "@/lib/chain";
+import { injectedConnector } from "@/lib/wagmi";
 
 function truncate(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -77,7 +77,7 @@ export function Nav() {
               {truncate(address!)}
             </button>
           ) : (
-            <button onClick={() => connect({ connector: injected() })} className="btn btn-primary btn-sm">
+            <button onClick={() => connect({ connector: injectedConnector })} className="btn btn-primary btn-sm">
               Connect Wallet
             </button>
           )}

@@ -4,10 +4,11 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { useAccount, useConnect, useBalance } from "wagmi";
-import { injected } from "wagmi/connectors";
-import { seededAgents } from "@kingsvarmo/shared";
+import { seededAgents, type AnalysisJob } from "@kingsvarmo/shared";
 import { useCreateJob } from "@/hooks/useAnalysisEscrow";
+import { fetchJson } from "@/lib/api";
 import { ogTestnet } from "@/lib/chain";
+import { injectedConnector } from "@/lib/wagmi";
 import { formatUnits, parseEther } from "viem";
 
 type Step = "upload" | "validate" | "review" | "confirm";
@@ -79,6 +80,9 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
   const [checks, setChecks] = useState<FileCheck[]>([]);
   const [datasetRef, setDatasetRef] = useState<string>("");
   const [confirmed, setConfirmed] = useState(false);
+  const [apiJobId, setApiJobId] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isSubmittingJob, setIsSubmittingJob] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const { address, isConnected } = useAccount();
@@ -146,12 +150,43 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
   const protocolFee = +(basePrice * 0.05).toFixed(3);
   const totalOG = +(basePrice + storageFee + protocolFee).toFixed(3);
 
-  const handleAuthorize = () => {
-    if (!isConnected) { connect({ connector: injected() }); return; }
-    // For now, since contract not deployed, show simulation state
-    setConfirmed(true);
-    // When contract is live, uncomment:
-    // createJob(BigInt(1), datasetRef, totalOG.toString());
+  const handleAuthorize = async () => {
+    if (!isConnected) { connect({ connector: injectedConnector }); return; }
+
+    setApiError(null);
+    setIsSubmittingJob(true);
+
+    try {
+      const { job } = await fetchJson<{ job: AnalysisJob }>("/api/jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: agent.id,
+          userWallet: address ?? "0x0000000000000000000000000000000000000001",
+          filename: file?.name ?? "alkaloid-sample.csv",
+          uploadReference: datasetRef,
+          inputMetadata: {
+            source: "web-run-page",
+            totalOG,
+            storageFee,
+            protocolFee,
+            fileSizeBytes: file?.size ?? 0
+          }
+        })
+      });
+
+      await fetchJson<{ job: AnalysisJob | null }>(`/api/jobs/${job.id}/start`, {
+        method: "POST"
+      });
+
+      setApiJobId(job.id);
+      setConfirmed(true);
+      // When contract is live, uncomment:
+      // createJob(BigInt(1), datasetRef, totalOG.toString());
+    } catch (caught) {
+      setApiError(caught instanceof Error ? caught.message : "Could not create the analysis job");
+    } finally {
+      setIsSubmittingJob(false);
+    }
   };
 
   // Success redirect (once contracts live + real txHash)
@@ -174,11 +209,17 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
           <div className="tx-panel" style={{ marginBottom: 24, textAlign: "left" }}>
             <div style={{ marginBottom: 6 }}><span style={{ color: "var(--text-3)" }}>Dataset ref:</span> {datasetRef}</div>
             <div><span style={{ color: "var(--text-3)" }}>Agent:</span> {agent.name}</div>
+            {apiJobId && (
+              <div style={{ marginTop: 6 }}><span style={{ color: "var(--text-3)" }}>API job:</span> {apiJobId}</div>
+            )}
           </div>
           <div className="callout callout-info" style={{ marginBottom: 24, textAlign: "left" }}>
             Smart contract integration is coming once deployed to 0G testnet. The on-chain job ID and tx hash will appear here.
           </div>
           <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+            {apiJobId && (
+              <Link href={`/jobs/${apiJobId}`} className="btn btn-primary">View Job Status</Link>
+            )}
             <Link href="/agents" className="btn btn-secondary">Back to Agents</Link>
           </div>
         </div>
@@ -388,7 +429,7 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
                     </svg>
                     Connect your wallet to authorize payment of {totalOG} OG and start the analysis.
                   </div>
-                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injected() })}>
+                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injectedConnector })}>
                     Connect Wallet
                   </button>
                 </div>
@@ -428,14 +469,20 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
                     </div>
                   )}
 
+                  {apiError && (
+                    <div className="callout callout-error" style={{ marginBottom: 16 }}>
+                      API job creation failed: {apiError}
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", gap: 12 }}>
                     <button className="btn btn-ghost" onClick={() => setStep("review")}>← Back</button>
                     <button
                       className="btn btn-violet btn-lg"
-                      disabled={isPending || isConfirming}
+                      disabled={isPending || isConfirming || isSubmittingJob}
                       onClick={handleAuthorize}
                     >
-                      {isPending ? "Waiting for wallet…" : isConfirming ? "Confirming…" : `Authorize & Run — ${totalOG} OG`}
+                      {isSubmittingJob ? "Starting AXL workflow…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming…" : `Authorize & Run — ${totalOG} OG`}
                     </button>
                   </div>
                 </div>

@@ -3,10 +3,10 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { useAccount, useConnect } from "wagmi";
-import { injected } from "wagmi/connectors";
 import { keccak256, toBytes } from "viem";
 import { useMintINFT } from "@/hooks/useINFTRegistry";
 import { use0GStorage } from "@/hooks/use0GStorage";
+import { injectedConnector } from "@/lib/wagmi";
 
 type Step = "basics" | "config" | "script" | "review";
 const STEP_ORDER: Step[] = ["basics", "config", "script", "review"];
@@ -103,7 +103,7 @@ export default function CreatorPage() {
   };
 
   const handleMint = async () => {
-    if (!isConnected) { connect({ connector: injected() }); return; }
+    if (!isConnected) { connect({ connector: injectedConnector }); return; }
     if (!scriptFile) return;
 
     // 1. Upload to 0G Storage
@@ -420,7 +420,7 @@ export default function CreatorPage() {
                   <div className="callout callout-warn" style={{ marginBottom: 16 }}>
                     Connect your wallet to mint this iNFT on 0G.
                   </div>
-                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injected() })}>
+                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injectedConnector })}>
                     Connect Wallet
                   </button>
                 </div>

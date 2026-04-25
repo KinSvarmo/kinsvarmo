@@ -2,7 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@kingsvarmo/shared"],
-  serverExternalPackages: ["wagmi", "viem", "@wagmi/core", "@wagmi/connectors"],
   webpack: (config, { isServer, webpack }) => {
     config.resolve.fallback = { 
       fs: false, 
