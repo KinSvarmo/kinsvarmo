@@ -8,7 +8,7 @@ import { injected } from "wagmi/connectors";
 import { seededAgents } from "@kingsvarmo/shared";
 import { useCreateJob } from "@/hooks/useAnalysisEscrow";
 import { ogTestnet } from "@/lib/chain";
-import { parseEther } from "viem";
+import { formatUnits, parseEther } from "viem";
 
 type Step = "upload" | "validate" | "review" | "confirm";
 
@@ -89,6 +89,7 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
   // File validation
   const validateFile = useCallback((f: File) => {
     const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+    const agentSupportsFormat = agent.supportedFormats.some((format) => format === ext);
     const sizeMB = f.size / (1024 * 1024);
     const results: FileCheck[] = [
       {
@@ -110,8 +111,8 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
       },
       {
         label: "Compatible with agent",
-        status: agent.supportedFormats.includes(ext) ? "pass" : "fail",
-        detail: agent.supportedFormats.includes(ext)
+        status: agentSupportsFormat ? "pass" : "fail",
+        detail: agentSupportsFormat
           ? "Format matches agent requirements"
           : `Agent accepts: ${agent.supportedFormats.join(", ")}`,
       },
@@ -401,7 +402,7 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
                     <div className="cost-row">
                       <span className="label">Balance</span>
                       <span className="value" style={{ color: hasSufficientBalance ? "var(--teal)" : "#f87171" }}>
-                        {balance ? `${parseFloat(balance.formatted).toFixed(4)} OG` : "—"}
+                        {balance ? `${Number(formatUnits(balance.value, balance.decimals)).toFixed(4)} ${balance.symbol}` : "—"}
                         {!hasSufficientBalance && " (insufficient)"}
                       </span>
                     </div>

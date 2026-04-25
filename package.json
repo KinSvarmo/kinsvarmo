@@ -8,11 +8,26 @@
     "dev": "pnpm --parallel --filter @kingsvarmo/web --filter @kingsvarmo/api dev",
     "dev:web": "pnpm --filter @kingsvarmo/web dev",
     "dev:api": "pnpm --filter @kingsvarmo/api dev",
+    "axl:nodes": "tsx scripts/axl/start-local-axl-network.ts",
+    "axl:workers": "tsx scripts/axl/start-agent-workers.ts",
+    "axl:demo": "tsx scripts/axl/run-demo-job.ts",
+    "axl:real:config": "bash -lc 'AXL_REAL_PORT_OFFSET=${AXL_REAL_PORT_OFFSET:-1000} tsx scripts/axl/prepare-real-axl.ts'",
+    "axl:real:nodes": "bash -lc 'AXL_REAL_PORT_OFFSET=${AXL_REAL_PORT_OFFSET:-1000} tsx scripts/axl/start-real-axl-network.ts'",
+    "axl:real:env": "bash -lc 'AXL_REAL_PORT_OFFSET=${AXL_REAL_PORT_OFFSET:-1000} tsx scripts/axl/export-real-axl-env.ts'",
+    "axl:real:check": "bash -lc 'AXL_REAL_PORT_OFFSET=${AXL_REAL_PORT_OFFSET:-1000} tsx scripts/axl/check-real-axl.ts'",
+    "axl:real:test": "bash -lc 'set -a; source /tmp/axl/kingsvarmo-configs/kingsvarmo-real-axl.env; set +a; KINSVARMO_AXL_LIVE_TESTS=1 KINSVARMO_AXL_LIVE_SEND_TESTS=1 pnpm test:axl'",
+    "axl:real:workers": "bash -lc 'set -a; source /tmp/axl/kingsvarmo-configs/kingsvarmo-real-axl.env; set +a; pnpm axl:workers'",
+    "axl:real:demo": "bash -lc 'set -a; source /tmp/axl/kingsvarmo-configs/kingsvarmo-real-axl.env; set +a; pnpm axl:demo'",
     "build": "pnpm -r build",
+    "test": "node --import tsx --test scripts/tests/**/*.test.ts",
+    "test:axl": "node --import tsx --test scripts/tests/axl/**/*.test.ts",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint"
   },
   "devDependencies": {
+    "@kingsvarmo/axl-client": "workspace:*",
+    "@kingsvarmo/shared": "workspace:*",
+    "tsx": "^4.19.0",
     "typescript": "^5.5.4"
   }
 }

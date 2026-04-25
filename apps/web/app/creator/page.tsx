@@ -92,6 +92,16 @@ export default function CreatorPage() {
     review: isConnected,
   };
 
+  const goBack = () => {
+    const previous = STEP_ORDER[STEP_ORDER.indexOf(step) - 1];
+    if (previous) setStep(previous);
+  };
+
+  const goForward = () => {
+    const next = STEP_ORDER[STEP_ORDER.indexOf(step) + 1];
+    if (next) setStep(next);
+  };
+
   const handleMint = () => {
     if (!isConnected) { connect({ connector: injected() }); return; }
     // mint(address!, encryptedURI, metadataHash);
@@ -427,7 +437,7 @@ export default function CreatorPage() {
             <button
               className="btn btn-ghost"
               disabled={step === "basics"}
-              onClick={() => setStep(STEP_ORDER[STEP_ORDER.indexOf(step) - 1])}
+              onClick={goBack}
             >
               ← Back
             </button>
@@ -435,7 +445,7 @@ export default function CreatorPage() {
               <button
                 className="btn btn-primary"
                 disabled={!canProceed[step]}
-                onClick={() => setStep(STEP_ORDER[STEP_ORDER.indexOf(step) + 1])}
+                onClick={goForward}
               >
                 Continue →
               </button>

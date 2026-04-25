@@ -16,6 +16,13 @@ Planned use:
 - Modules communicate through AXL-backed messages.
 - Job status UI renders sender, receiver, timestamp, and message type.
 
+Current implementation:
+
+- The API starts a job by sending `job.created` through the AXL adapter.
+- Each worker sends the primary workflow message to the next worker over AXL.
+- Each worker also sends an AXL audit copy to the API so backend state is driven by received AXL messages.
+- Real Gensyn AXL nodes can be used through `pnpm axl:real:*` scripts.
+
 ## KeeperHub
 
 Planned use:

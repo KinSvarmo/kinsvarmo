@@ -1,6 +1,4 @@
-import type { AnalysisJob } from "@kingsvarmo/shared";
-
-export type AgentModuleName = "planner" | "analyzer" | "critic" | "reporter";
+import type { AgentModuleName, AnalysisJob } from "@kingsvarmo/shared";
 
 export interface AgentModule<Input, Output> {
   name: AgentModuleName;

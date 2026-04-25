@@ -33,6 +33,10 @@ const sponsors = [
 export default function HomePage() {
   const [agent] = seededAgents;
 
+  if (!agent) {
+    return null;
+  }
+
   return (
     <>
       {/* ── Hero ── */}

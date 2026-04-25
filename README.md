@@ -39,6 +39,44 @@ pnpm install
 pnpm dev
 ```
 
+## Local AXL Demo
+
+Run the local AXL-compatible node network:
+
+```bash
+pnpm axl:nodes
+```
+
+In a second terminal:
+
+```bash
+pnpm axl:workers
+```
+
+In a third terminal:
+
+```bash
+pnpm axl:demo
+```
+
+This sends a demo job through planner, analyzer, critic, and reporter as separate processes.
+
+## API Job Workflow
+
+The backend job flow is driven by AXL messages. `POST /api/jobs/:id/start` sends `job.created` to the planner node, then the API consumes AXL messages sent back by the workers to update module status, message logs, and final result state.
+
+## Repository Checks
+
+Repository-level tests live in `scripts/tests`.
+
+```bash
+pnpm test
+pnpm test:axl
+pnpm typecheck
+```
+
+AXL-specific setup and live-node smoke testing are documented in `docs/axl-adapter-testing.md`.
+
 ## Environment
 
 Copy `.env.example` to `.env.local` for local development and fill sponsor integration values as they become available.
@@ -49,6 +87,7 @@ Copy `.env.example` to `.env.local` for local development and fill sponsor integ
 - App and package placeholders exist.
 - Shared domain types are defined.
 - Sponsor adapter interfaces are stubbed.
+- Repository structure and shared model tests exist under `scripts/tests`.
 - Detailed integrations are intentionally not implemented yet.
 
 ## Known Limitations

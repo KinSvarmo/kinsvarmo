@@ -12,3 +12,24 @@ KinSvarmo will use a small modular monorepo:
 - `packages/contracts`: Solidity contracts and deployment support.
 
 The MVP should keep one golden path reliable before adding broader marketplace behavior.
+
+## AXL-Driven Job Workflow
+
+The API no longer needs a fake timer/event stream for job progress. A job starts when `POST /api/jobs/:id/start` sends a real `job.created` AXL message from the API node to the planner node.
+
+Planner, analyzer, critic, and reporter run as separate worker processes. Each worker receives one AXL message, sends the primary next-step message to the next module, and sends an audit copy back to the API node for job status tracking.
+
+The API consumes messages from its AXL node and updates job state from message types:
+
+- `plan.generated`: planner completed, analyzer running
+- `analysis.completed`: analyzer completed, critic running
+- `critic.reviewed`: critic completed, reporter running
+- `report.generated`: reporter completed, result stored
+
+The API exposes the persisted state through:
+
+- `POST /api/jobs`
+- `POST /api/jobs/:id/start`
+- `GET /api/jobs/:id`
+- `GET /api/jobs/:id/messages`
+- `GET /api/jobs/:id/result`
