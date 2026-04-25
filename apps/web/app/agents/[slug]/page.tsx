@@ -1,0 +1,512 @@
+"use client";
+
+import { useState, useRef, useCallback, useEffect } from "react";
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { useAccount, useConnect, useBalance } from "wagmi";
+import { injected } from "wagmi/connectors";
+import { seededAgents } from "@kingsvarmo/shared";
+import { useCreateJob } from "@/hooks/useAnalysisEscrow";
+import { ogTestnet } from "@/lib/chain";
+import { parseEther } from "viem";
+
+type Step = "upload" | "validate" | "review" | "confirm";
+
+const STEP_ORDER: Step[] = ["upload", "validate", "review", "confirm"];
+
+const STEP_LABELS: Record<Step, string> = {
+  upload: "Upload Dataset",
+  validate: "Validate File",
+  review: "Review Cost",
+  confirm: "Authorize & Run",
+};
+
+const ALLOWED_FORMATS = ["csv", "json", "tsv", "txt"];
+const MAX_SIZE_MB = 50;
+
+type FileCheck = {
+  label: string;
+  status: "pass" | "fail" | "pending";
+  detail?: string;
+};
+
+function CheckIcon({ status }: { status: FileCheck["status"] }) {
+  if (status === "pass")
+    return (
+      <svg className="check-icon pass" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" />
+      </svg>
+    );
+  if (status === "fail")
+    return (
+      <svg className="check-icon fail" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+      </svg>
+    );
+  return (
+    <svg className="check-icon pending" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" />
+    </svg>
+  );
+}
+
+function StepBar({ current }: { current: Step }) {
+  const idx = STEP_ORDER.indexOf(current);
+  return (
+    <div className="stepper">
+      {STEP_ORDER.map((s, i) => (
+        <div key={s} style={{ display: "flex", alignItems: "center", flex: i < STEP_ORDER.length - 1 ? 1 : undefined }}>
+          <div className="step-item">
+            <div className={`step-dot ${i < idx ? "done" : i === idx ? "active" : "inactive"}`}>
+              {i < idx ? "✓" : i + 1}
+            </div>
+            <span className={`step-label ${i === idx ? "active" : ""}`}>{STEP_LABELS[s]}</span>
+          </div>
+          {i < STEP_ORDER.length - 1 && <div className="step-connector" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function AgentRunPage({ params }: { params: { slug: string } }) {
+  const agent = seededAgents.find((a) => a.slug === params.slug);
+  if (!agent) return notFound();
+
+  const [step, setStep] = useState<Step>("upload");
+  const [file, setFile] = useState<File | null>(null);
+  const [dragover, setDragover] = useState(false);
+  const [checks, setChecks] = useState<FileCheck[]>([]);
+  const [datasetRef, setDatasetRef] = useState<string>("");
+  const [confirmed, setConfirmed] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const { address, isConnected } = useAccount();
+  const { connect } = useConnect();
+  const { data: balance } = useBalance({ address, chainId: ogTestnet.id });
+  const { createJob, isPending, isConfirming, isSuccess, txHash, error } = useCreateJob();
+
+  // File validation
+  const validateFile = useCallback((f: File) => {
+    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+    const sizeMB = f.size / (1024 * 1024);
+    const results: FileCheck[] = [
+      {
+        label: "File format",
+        status: ALLOWED_FORMATS.includes(ext) ? "pass" : "fail",
+        detail: ALLOWED_FORMATS.includes(ext)
+          ? `.${ext} is supported`
+          : `".${ext}" is not supported — use ${ALLOWED_FORMATS.join(", ")}`,
+      },
+      {
+        label: "File size",
+        status: sizeMB <= MAX_SIZE_MB ? "pass" : "fail",
+        detail: `${sizeMB.toFixed(2)} MB / ${MAX_SIZE_MB} MB limit`,
+      },
+      {
+        label: "Non-empty file",
+        status: f.size > 0 ? "pass" : "fail",
+        detail: f.size > 0 ? "File contains data" : "File is empty",
+      },
+      {
+        label: "Compatible with agent",
+        status: agent.supportedFormats.includes(ext) ? "pass" : "fail",
+        detail: agent.supportedFormats.includes(ext)
+          ? "Format matches agent requirements"
+          : `Agent accepts: ${agent.supportedFormats.join(", ")}`,
+      },
+    ];
+    return results;
+  }, [agent]);
+
+  const handleFile = (f: File) => {
+    setFile(f);
+    const results = validateFile(f);
+    setChecks(results);
+    setDatasetRef(`0g://dataset/${Date.now()}-${f.name}`);
+    setStep("validate");
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragover(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  };
+
+  const allPass = checks.every((c) => c.status === "pass");
+  const hasSufficientBalance = balance
+    ? balance.value >= parseEther(agent.priceIn0G)
+    : false;
+
+  // Compute cost breakdown
+  const basePrice = parseFloat(agent.priceIn0G);
+  const storageFee = 0.02;
+  const protocolFee = +(basePrice * 0.05).toFixed(3);
+  const totalOG = +(basePrice + storageFee + protocolFee).toFixed(3);
+
+  const handleAuthorize = () => {
+    if (!isConnected) { connect({ connector: injected() }); return; }
+    // For now, since contract not deployed, show simulation state
+    setConfirmed(true);
+    // When contract is live, uncomment:
+    // createJob(BigInt(1), datasetRef, totalOG.toString());
+  };
+
+  // Success redirect (once contracts live + real txHash)
+  useEffect(() => {
+    if (isSuccess && txHash) {
+      // redirect(`/jobs/${txHash}`)
+    }
+  }, [isSuccess, txHash]);
+
+  if (confirmed) {
+    return (
+      <div className="container" style={{ paddingTop: 80, paddingBottom: 80, maxWidth: 640, margin: "0 auto" }}>
+        <div className="glass-lg" style={{ padding: 48, textAlign: "center" }}>
+          <div style={{ fontSize: "3rem", marginBottom: 16 }}>🚀</div>
+          <h1 style={{ fontSize: "1.8rem", marginBottom: 12 }}>Analysis Queued</h1>
+          <p style={{ color: "var(--text-2)", marginBottom: 24, lineHeight: 1.6 }}>
+            Your job has been submitted. The agent swarm will coordinate via Gensyn AXL and execute through KeeperHub.
+            Results will appear once the workflow completes.
+          </p>
+          <div className="tx-panel" style={{ marginBottom: 24, textAlign: "left" }}>
+            <div style={{ marginBottom: 6 }}><span style={{ color: "var(--text-3)" }}>Dataset ref:</span> {datasetRef}</div>
+            <div><span style={{ color: "var(--text-3)" }}>Agent:</span> {agent.name}</div>
+          </div>
+          <div className="callout callout-info" style={{ marginBottom: 24, textAlign: "left" }}>
+            Smart contract integration is coming once deployed to 0G testnet. The on-chain job ID and tx hash will appear here.
+          </div>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+            <Link href="/agents" className="btn btn-secondary">Back to Agents</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container" style={{ paddingTop: 48, paddingBottom: 80 }}>
+      {/* Breadcrumb */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 32, fontSize: "0.82rem", color: "var(--text-3)" }}>
+        <Link href="/agents" style={{ color: "var(--text-3)" }}>Agents</Link>
+        <span>/</span>
+        <span style={{ color: "var(--text)" }}>{agent.name}</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 32, alignItems: "start" }}>
+        {/* ── Main panel ── */}
+        <div>
+          {/* Agent header */}
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 32 }}>
+            <div className="agent-avatar" style={{ fontSize: "2rem", width: 64, height: 64 }}>🌿</div>
+            <div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <h1 style={{ fontSize: "1.6rem" }}>{agent.name}</h1>
+                <span className="badge badge-teal">Published</span>
+                {agent.intelligenceReference && (
+                  <a
+                    href={`https://chainscan-galileo.0g.ai`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="badge badge-violet"
+                    style={{ cursor: "pointer" }}
+                    title={agent.intelligenceReference}
+                  >
+                    ◆ 0G indexed ↗
+                  </a>
+                )}
+              </div>
+              <p style={{ color: "var(--text-2)", fontSize: "0.9rem", marginBottom: 4 }}>
+                by {agent.creatorName}
+              </p>
+              <p style={{ color: "var(--text-2)", lineHeight: 1.6 }}>{agent.description}</p>
+            </div>
+          </div>
+
+          {/* Stepper */}
+          <div style={{ marginBottom: 32 }}>
+            <StepBar current={step} />
+          </div>
+
+          {/* ── Step: Upload ── */}
+          {step === "upload" && (
+            <div>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: 8 }}>Upload your dataset</h2>
+              <p style={{ color: "var(--text-2)", marginBottom: 20, fontSize: "0.9rem" }}>
+                Accepted formats: {agent.supportedFormats.map((f) => `.${f}`).join(", ")} · Max {MAX_SIZE_MB} MB
+              </p>
+
+              <div
+                className={`upload-zone ${dragover ? "dragover" : ""} ${file ? "has-file" : ""}`}
+                onClick={() => fileInput.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
+                onDragLeave={() => setDragover(false)}
+                onDrop={handleDrop}
+              >
+                <div className="upload-icon">
+                  <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <p style={{ fontWeight: 600, marginBottom: 6 }}>
+                  {dragover ? "Drop your file here" : "Drag & drop your dataset"}
+                </p>
+                <p style={{ fontSize: "0.82rem", color: "var(--text-3)" }}>
+                  or <span style={{ color: "var(--teal)", textDecoration: "underline" }}>browse files</span>
+                </p>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept={agent.supportedFormats.map((f) => `.${f}`).join(",")}
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFile(f);
+                  }}
+                />
+              </div>
+
+              <div className="callout callout-info" style={{ marginTop: 20 }}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                </svg>
+                <span>Your dataset is uploaded to 0G Storage and only accessible by the authorized analysis execution. The agent&apos;s logic remains encrypted and private at all times.</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step: Validate ── */}
+          {step === "validate" && file && (
+            <div>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: 4 }}>Validating: <span style={{ color: "var(--teal)" }}>{file.name}</span></h2>
+              <p style={{ color: "var(--text-2)", fontSize: "0.88rem", marginBottom: 24 }}>
+                {(file.size / 1024).toFixed(1)} KB · {file.type || "unknown type"}
+              </p>
+
+              <div className="glass" style={{ padding: 24, marginBottom: 24 }}>
+                <div className="check-list">
+                  {checks.map((c) => (
+                    <div key={c.label} className="check-item">
+                      <CheckIcon status={c.status} />
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontWeight: 500 }}>{c.label}</span>
+                        {c.detail && (
+                          <span style={{ color: c.status === "fail" ? "#f87171" : "var(--text-3)", marginLeft: 8, fontSize: "0.82rem" }}>
+                            — {c.detail}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {!allPass && (
+                <div className="callout callout-error" style={{ marginBottom: 20 }}>
+                  Some checks failed. Please upload a valid file.
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 12 }}>
+                <button className="btn btn-ghost" onClick={() => { setFile(null); setStep("upload"); }}>
+                  ← Change file
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={!allPass}
+                  onClick={() => setStep("review")}
+                >
+                  Proceed to Cost Review →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step: Review ── */}
+          {step === "review" && (
+            <div>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: 20 }}>Review cost</h2>
+
+              <div className="glass" style={{ padding: 24, marginBottom: 20 }}>
+                <div className="cost-row">
+                  <span className="label">Analysis fee</span>
+                  <span className="value">{agent.priceIn0G} OG</span>
+                </div>
+                <div className="cost-row">
+                  <span className="label">0G Storage (dataset)</span>
+                  <span className="value">{storageFee} OG</span>
+                </div>
+                <div className="cost-row">
+                  <span className="label">Protocol fee (5%)</span>
+                  <span className="value">{protocolFee} OG</span>
+                </div>
+                <div className="cost-row cost-total" style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+                  <span className="label font-bold">Total</span>
+                  <span className="value">{totalOG} OG</span>
+                </div>
+              </div>
+
+              <div className="glass" style={{ padding: 20, marginBottom: 24 }}>
+                <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>What you&apos;re paying for</p>
+                <ul style={{ fontSize: "0.85rem", color: "var(--text-2)", lineHeight: 1.7, paddingLeft: 16 }}>
+                  <li>Temporary execution rights on the encrypted iNFT intelligence</li>
+                  <li>Dataset storage on 0G Storage (pinned for 30 days)</li>
+                  <li>Planner → Analyzer → Critic → Reporter workflow via Gensyn AXL</li>
+                  <li>Structured report with confidence scores and 0G provenance hash</li>
+                </ul>
+              </div>
+
+              {/* Runtime estimate */}
+              <div style={{ display: "flex", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-2)" }}>
+                  ⏱ Est. runtime: <strong style={{ color: "var(--text)" }}>~{Math.round(agent.runtimeEstimateSeconds / 60)} min</strong>
+                </div>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-2)" }}>
+                  📁 Dataset: <strong style={{ color: "var(--text)" }}>{file?.name}</strong>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 12 }}>
+                <button className="btn btn-ghost" onClick={() => setStep("validate")}>← Back</button>
+                <button className="btn btn-primary" onClick={() => setStep("confirm")}>Authorize & Run →</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step: Confirm ── */}
+          {step === "confirm" && (
+            <div>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: 20 }}>Authorize & Run</h2>
+
+              {!isConnected ? (
+                <div>
+                  <div className="callout callout-warn" style={{ marginBottom: 20 }}>
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0 }}>
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    Connect your wallet to authorize payment of {totalOG} OG and start the analysis.
+                  </div>
+                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injected() })}>
+                    Connect Wallet
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div className="glass" style={{ padding: 24, marginBottom: 20 }}>
+                    <div className="cost-row">
+                      <span className="label">Wallet</span>
+                      <span className="value font-mono" style={{ fontSize: "0.85rem" }}>{address}</span>
+                    </div>
+                    <div className="cost-row">
+                      <span className="label">Balance</span>
+                      <span className="value" style={{ color: hasSufficientBalance ? "var(--teal)" : "#f87171" }}>
+                        {balance ? `${parseFloat(balance.formatted).toFixed(4)} OG` : "—"}
+                        {!hasSufficientBalance && " (insufficient)"}
+                      </span>
+                    </div>
+                    <div className="cost-row">
+                      <span className="label">You&apos;ll pay</span>
+                      <span className="value" style={{ color: "var(--teal)", fontSize: "1.1rem" }}>{totalOG} OG</span>
+                    </div>
+                    <div className="cost-row">
+                      <span className="label">Contract</span>
+                      <span className="value font-mono" style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                        AnalysisEscrow (deploy pending)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="callout callout-info" style={{ marginBottom: 20 }}>
+                    Smart contract not yet deployed to 0G testnet. Clicking below simulates the flow — real on-chain execution will be enabled after deployment.
+                  </div>
+
+                  {error && (
+                    <div className="callout callout-error" style={{ marginBottom: 16 }}>
+                      {error.message}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <button className="btn btn-ghost" onClick={() => setStep("review")}>← Back</button>
+                    <button
+                      className="btn btn-violet btn-lg"
+                      disabled={isPending || isConfirming}
+                      onClick={handleAuthorize}
+                    >
+                      {isPending ? "Waiting for wallet…" : isConfirming ? "Confirming…" : `Authorize & Run — ${totalOG} OG`}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Sidebar ── */}
+        <div style={{ position: "sticky", top: 80 }}>
+          <div className="glass" style={{ padding: 24, marginBottom: 16 }}>
+            <p className="eyebrow" style={{ marginBottom: 12, fontSize: "0.7rem" }}>Agent details</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[
+                { label: "Price", value: `${agent.priceIn0G} OG`, color: "var(--teal)" },
+                { label: "Runtime", value: `~${Math.round(agent.runtimeEstimateSeconds / 60)} min` },
+                { label: "Formats", value: agent.supportedFormats.map((f) => `.${f}`).join(", ") },
+                { label: "Creator", value: agent.creatorName },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "var(--text-3)" }}>{label}</span>
+                  <span style={{ color: color ?? "var(--text)", fontWeight: 500, textAlign: "right", maxWidth: 160 }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {agent.intelligenceReference && (
+            <div className="glass" style={{ padding: 24, marginBottom: 16 }}>
+              <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>0G References</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div>
+                  <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 2 }}>Intelligence</p>
+                  <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
+                    {agent.intelligenceReference}
+                  </p>
+                </div>
+                {agent.storageReference && (
+                  <div>
+                    <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 2 }}>Metadata</p>
+                    <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
+                      {agent.storageReference}
+                    </p>
+                  </div>
+                )}
+                <a
+                  href="https://chainscan-galileo.0g.ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginTop: 8, textAlign: "center", justifyContent: "center" }}
+                >
+                  View on 0G Explorer ↗
+                </a>
+              </div>
+            </div>
+          )}
+
+          <div className="glass" style={{ padding: 20 }}>
+            <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>Agent swarm</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {["Planner", "Analyzer", "Critic", "Reporter"].map((m) => (
+                <div key={m} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem" }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--text-3)" }} />
+                  <span style={{ color: "var(--text-2)" }}>{m}</span>
+                  <span style={{ marginLeft: "auto", fontSize: "0.7rem", color: "var(--text-3)" }}>via AXL</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
