@@ -33,3 +33,5 @@ export type PlannerModule = AgentModule<AnalysisJob, PlanOutput>;
 export type AnalyzerModule = AgentModule<PlanOutput, AnalysisOutput>;
 export type CriticModule = AgentModule<AnalysisOutput, CriticOutput>;
 export type ReporterModule = AgentModule<CriticOutput, ReportOutput>;
+
+export * from "./phytochemistry/demo-analysis";

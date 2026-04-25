@@ -11,3 +11,9 @@
 9. Show the KeeperHub execution block.
 10. Open the final result.
 11. Show the 0G explorer link and agent reference.
+
+Demo dataset:
+
+```text
+demo-data/alkaloid-sample.csv
+```

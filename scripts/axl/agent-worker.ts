@@ -3,6 +3,18 @@ import {
   createHttpAxlClient,
   type AxlParticipant
 } from "@kingsvarmo/axl-client";
+import {
+  createDemoPlan,
+  createDemoReport,
+  runDemoAnalysis,
+  reviewDemoAnalysis
+} from "@kingsvarmo/agents";
+import type {
+  DemoAnalysisOutput,
+  DemoCriticOutput,
+  DemoPlanOutput
+} from "@kingsvarmo/agents";
+import type { AnalysisJob } from "@kingsvarmo/shared";
 import type { AxlMessage } from "@kingsvarmo/shared";
 import {
   createLocalAxlNodeMap,
@@ -119,62 +131,58 @@ function handleMessage(
   message: AxlMessage
 ): AxlMessage | null {
   if (worker === "planner" && message.type === "job.created") {
+    const plan = createDemoPlan({
+      job: extractJob(message)
+    });
+
     return createMessage(message, {
       sender: "planner",
       receiver: "analyzer",
       type: "plan.generated",
       payload: {
-        route: "phytochemistry-demo",
-        steps: ["validate input", "run deterministic screen", "review", "report"],
+        ...plan,
         sourceMessageId: message.id
       }
     });
   }
 
   if (worker === "analyzer" && message.type === "plan.generated") {
+    const analysis = runDemoAnalysis(extractPlan(message));
+
     return createMessage(message, {
       sender: "analyzer",
       receiver: "critic",
       type: "analysis.completed",
       payload: {
-        observations: [
-          "Stable alkaloid-like screening cluster",
-          "No severe missing-value warning in demo metadata"
-        ],
-        metrics: {
-          candidateSignals: 4,
-          normalizedConfidence: 0.82
-        },
+        ...analysis,
         sourceMessageId: message.id
       }
     });
   }
 
   if (worker === "critic" && message.type === "analysis.completed") {
+    const review = reviewDemoAnalysis(extractAnalysis(message));
+
     return createMessage(message, {
       sender: "critic",
       receiver: "reporter",
       type: "critic.reviewed",
       payload: {
-        confidence: 0.82,
-        warnings: ["Demo result is deterministic and not a clinical claim"],
+        ...review,
         sourceMessageId: message.id
       }
     });
   }
 
   if (worker === "reporter" && message.type === "critic.reviewed") {
+    const report = createDemoReport(extractReview(message));
+
     return createMessage(message, {
       sender: "reporter",
       receiver: "api",
       type: "report.generated",
       payload: {
-        summary: "Demo sample shows modest alkaloid-like screening signals.",
-        keyFindings: [
-          "Candidate alkaloid-like families detected",
-          "Confidence is suitable for demo workflow validation"
-        ],
-        provenanceId: `prov_${message.jobId}`,
+        ...report,
         sourceMessageId: message.id
       }
     });
@@ -209,4 +217,59 @@ function parseRequestTimeout(): number {
 
 function shouldAuditToApi(): boolean {
   return process.env.AXL_AUDIT_TO_API !== "0";
+}
+
+function extractJob(message: AxlMessage): AnalysisJob {
+  const job = message.payload.job;
+
+  if (isAnalysisJob(job)) {
+    return job;
+  }
+
+  return {
+    id: message.jobId,
+    agentId:
+      typeof message.payload.agentId === "string"
+        ? message.payload.agentId
+        : "agent_alkaloid_predictor_v2",
+    userWallet:
+      typeof message.payload.userWallet === "string"
+        ? message.payload.userWallet
+        : "0x0000000000000000000000000000000000000001",
+    filename:
+      typeof message.payload.filename === "string"
+        ? message.payload.filename
+        : "alkaloid-sample.csv",
+    inputMetadata: {},
+    status: "planning",
+    paymentStatus: "authorized",
+    plannerStatus: "running",
+    analyzerStatus: "pending",
+    criticStatus: "pending",
+    reporterStatus: "pending",
+    createdAt: message.timestamp,
+    updatedAt: message.timestamp
+  };
+}
+
+function extractPlan(message: AxlMessage): DemoPlanOutput {
+  return message.payload as unknown as DemoPlanOutput;
+}
+
+function extractAnalysis(message: AxlMessage): DemoAnalysisOutput {
+  return message.payload as unknown as DemoAnalysisOutput;
+}
+
+function extractReview(message: AxlMessage): DemoCriticOutput {
+  return message.payload as unknown as DemoCriticOutput;
+}
+
+function isAnalysisJob(value: unknown): value is AnalysisJob {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    "agentId" in value &&
+    "filename" in value
+  );
 }

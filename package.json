@@ -25,6 +25,7 @@
     "lint": "pnpm -r lint"
   },
   "devDependencies": {
+    "@kingsvarmo/agents": "workspace:*",
     "@kingsvarmo/axl-client": "workspace:*",
     "@kingsvarmo/shared": "workspace:*",
     "tsx": "^4.19.0",

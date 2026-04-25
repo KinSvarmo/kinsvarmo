@@ -5,8 +5,6 @@ import { useAccount } from "wagmi";
 // Real SDK import to be used once installed:
 import { Blob as ZgBlob, Indexer } from "@0gfoundation/0g-ts-sdk";
 import { BrowserProvider } from "ethers";
-import { getWalletClient } from "@wagmi/core";
-import { wagmiConfig } from "@/lib/wagmi";
 
 export function use0GStorage() {
   const { address, isConnected } = useAccount();
@@ -31,12 +29,12 @@ export function use0GStorage() {
       // REAL IMPLEMENTATION (Uncomment when @0gfoundation/0g-ts-sdk & ethers are installed)
       // ────────────────────────────────────────────────────────────────────────
 
-      // 1. Get the EIP-1193 provider from wagmi
-      const walletClient = await getWalletClient(wagmiConfig);
-      if (!walletClient) throw new Error("Wallet client not found");
+      // 1. Get the EIP-1193 provider injected by the connected wallet.
+      const ethereum = (globalThis as typeof globalThis & { ethereum?: unknown }).ethereum;
+      if (!ethereum) throw new Error("Wallet provider not found");
 
       // 2. Initialize ethers BrowserProvider and Signer
-      const provider = new BrowserProvider(walletClient.transport);
+      const provider = new BrowserProvider(ethereum as ConstructorParameters<typeof BrowserProvider>[0]);
       const signer = await provider.getSigner();
 
       // 3. Initialize 0G SDK objects

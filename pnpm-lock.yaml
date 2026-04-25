@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@kingsvarmo/agents':
+        specifier: workspace:*
+        version: link:packages/agents
       '@kingsvarmo/axl-client':
         specifier: workspace:*
         version: link:packages/axl-client

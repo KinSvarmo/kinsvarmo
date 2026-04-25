@@ -33,3 +33,9 @@ The API exposes the persisted state through:
 - `GET /api/jobs/:id`
 - `GET /api/jobs/:id/messages`
 - `GET /api/jobs/:id/result`
+
+## Deterministic Demo Analysis
+
+The phytochemistry demo path is intentionally deterministic. The sample input lives at `demo-data/alkaloid-sample.csv`, and the reusable analysis functions live in `packages/agents/src/phytochemistry/demo-analysis.ts`.
+
+The analysis does not make production scientific claims. It parses a small screening dataset, computes stable summary metrics, applies a modest confidence rule, and packages the result for the reporter. The same job and dataset produce the same output every time.

@@ -65,6 +65,10 @@ This sends a demo job through planner, analyzer, critic, and reporter as separat
 
 The backend job flow is driven by AXL messages. `POST /api/jobs/:id/start` sends `job.created` to the planner node, then the API consumes AXL messages sent back by the workers to update module status, message logs, and final result state.
 
+## Demo Dataset
+
+The deterministic phytochemistry sample lives at `demo-data/alkaloid-sample.csv`. The same input produces the same report every time, which keeps the demo path stable.
+
 ## Repository Checks
 
 Repository-level tests live in `scripts/tests`.

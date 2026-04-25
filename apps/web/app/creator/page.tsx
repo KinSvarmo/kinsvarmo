@@ -92,7 +92,6 @@ export default function CreatorPage() {
     review: isConnected,
   };
 
-<<<<<<< Updated upstream
   const goBack = () => {
     const previous = STEP_ORDER[STEP_ORDER.indexOf(step) - 1];
     if (previous) setStep(previous);
@@ -103,10 +102,7 @@ export default function CreatorPage() {
     if (next) setStep(next);
   };
 
-  const handleMint = () => {
-=======
   const handleMint = async () => {
->>>>>>> Stashed changes
     if (!isConnected) { connect({ connector: injected() }); return; }
     if (!scriptFile) return;
 
