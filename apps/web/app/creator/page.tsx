@@ -6,6 +6,7 @@ import { useAccount, useConnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { keccak256, toBytes } from "viem";
 import { useMintINFT } from "@/hooks/useINFTRegistry";
+import { use0GStorage } from "@/hooks/use0GStorage";
 
 type Step = "basics" | "config" | "script" | "review";
 const STEP_ORDER: Step[] = ["basics", "config", "script", "review"];
@@ -41,11 +42,13 @@ const FORMATS = ["csv", "json", "tsv", "txt", "fasta", "h5"];
 export default function CreatorPage() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
-  const { mint, isPending, isConfirming, isSuccess, txHash, error } = useMintINFT();
+  const { mint, isPending: isMintPending, isConfirming, isSuccess, txHash, error: mintError } = useMintINFT();
+  const { uploadFile, isUploading, uploadError } = use0GStorage();
 
   const [step, setStep] = useState<Step>("basics");
   const [scriptFile, setScriptFile] = useState<File | null>(null);
   const [dragover, setDragover] = useState(false);
+  const [encryptedURI, setEncryptedURI] = useState<string>("");
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -82,9 +85,6 @@ export default function CreatorPage() {
     toBytes(JSON.stringify({ name: form.name, domain: form.domain, description: form.description }))
   );
 
-  // Simulated 0G storage URI that would come from actual upload
-  const encryptedURI = `0g://encrypted/intelligence/${form.slug || "agent"}-${Date.now()}`;
-
   const canProceed: Record<Step, boolean> = {
     basics: Boolean(form.name && form.description && form.domain && form.creatorName),
     config: form.formats.length > 0 && Boolean(form.priceIn0G),
@@ -92,6 +92,7 @@ export default function CreatorPage() {
     review: isConnected,
   };
 
+<<<<<<< Updated upstream
   const goBack = () => {
     const previous = STEP_ORDER[STEP_ORDER.indexOf(step) - 1];
     if (previous) setStep(previous);
@@ -103,10 +104,24 @@ export default function CreatorPage() {
   };
 
   const handleMint = () => {
+=======
+  const handleMint = async () => {
+>>>>>>> Stashed changes
     if (!isConnected) { connect({ connector: injected() }); return; }
-    // mint(address!, encryptedURI, metadataHash);
-    // Stub: contracts not yet deployed
+    if (!scriptFile) return;
+
+    // 1. Upload to 0G Storage
+    const storageUri = await uploadFile(scriptFile);
+    if (!storageUri) return; // Upload failed
+    
+    setEncryptedURI(storageUri);
+
+    // 2. Mint the iNFT pointing to the 0G Storage URI
+    // Uncomment when contracts are live:
+    // mint(address!, storageUri, metadataHash);
   };
+
+  const isPending = isUploading || isMintPending;
 
   if (isSuccess && txHash) {
     return (
@@ -393,16 +408,15 @@ export default function CreatorPage() {
               {/* Metadata hash preview */}
               <div className="tx-panel" style={{ marginBottom: 20 }}>
                 <div style={{ marginBottom: 4 }}><span style={{ color: "var(--text-3)" }}>Metadata hash (keccak256): </span>{metadataHash}</div>
-                <div><span style={{ color: "var(--text-3)" }}>Encrypted URI: </span>{encryptedURI}</div>
+                <div><span style={{ color: "var(--text-3)" }}>Encrypted URI: </span>{encryptedURI || "Will be generated upon upload"}</div>
               </div>
 
               <div className="callout callout-info" style={{ marginBottom: 20 }}>
-                Smart contract not yet deployed to 0G testnet. The mint transaction will be enabled after
-                INFTRegistry is deployed. The metadata hash and encrypted URI above are correct and ready to submit.
+                Smart contract not yet deployed to 0G testnet. Clicking below will simulate the file upload to 0G Storage and display the UI flow.
               </div>
 
-              {error && (
-                <div className="callout callout-error" style={{ marginBottom: 16 }}>{error.message}</div>
+              {(mintError || uploadError) && (
+                <div className="callout callout-error" style={{ marginBottom: 16 }}>{mintError?.message || uploadError}</div>
               )}
 
               {!isConnected ? (
@@ -425,7 +439,7 @@ export default function CreatorPage() {
                     onClick={handleMint}
                     style={{ width: "100%", justifyContent: "center" }}
                   >
-                    {isPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : "Mint iNFT on 0G →"}
+                    {isUploading ? "Uploading to 0G Storage…" : isMintPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : "Upload & Mint iNFT →"}
                   </button>
                 </div>
               )}
