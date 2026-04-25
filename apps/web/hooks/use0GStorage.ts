@@ -2,19 +2,22 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
-// Real SDK import to be used once installed:
-import { Blob as ZgBlob, Indexer } from "@0gfoundation/0g-ts-sdk";
-import { BrowserProvider } from "ethers";
+import { BrowserProvider, ethers } from "ethers";
+import { bytesToHex, generateAes256Key, uploadBrowserFile } from "@kingsvarmo/zero-g";
+import { numberToHex } from "viem";
+import { ogTestnet } from "@/lib/chain";
+
+const ZERO_G_TESTNET = {
+  rpcUrl: "https://evmrpc-testnet.0g.ai",
+  indexerRpc:
+    process.env.NEXT_PUBLIC_0G_INDEXER_RPC ?? "https://indexer-storage-testnet-turbo.0g.ai",
+} as const;
 
 export function use0GStorage() {
   const { address, isConnected } = useAccount();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  /**
-   * Uploads a File to 0G Storage using the user's connected wallet.
-   * No private key is required, as the SDK will request a signature via MetaMask.
-   */
   const uploadFile = async (file: File): Promise<string | null> => {
     if (!isConnected || !address) {
       setUploadError("Wallet not connected");
@@ -25,54 +28,57 @@ export function use0GStorage() {
     setUploadError(null);
 
     try {
-      // ────────────────────────────────────────────────────────────────────────
-      // REAL IMPLEMENTATION (Uncomment when @0gfoundation/0g-ts-sdk & ethers are installed)
-      // ────────────────────────────────────────────────────────────────────────
+      const ethereum = (window as any).ethereum as
+        | {
+            request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+          }
+        | undefined;
+      if (!ethereum) throw new Error("MetaMask is not installed!");
 
-      // 1. Get the EIP-1193 provider injected by the connected wallet.
-      const ethereum = (globalThis as typeof globalThis & { ethereum?: unknown }).ethereum;
-      if (!ethereum) throw new Error("Wallet provider not found");
+      const currentChainId = await ethereum.request({ method: "eth_chainId" });
+      const targetChainIdHex = numberToHex(ogTestnet.id);
 
-      // 2. Initialize ethers BrowserProvider and Signer
-      const provider = new BrowserProvider(ethereum as ConstructorParameters<typeof BrowserProvider>[0]);
+      if (currentChainId !== targetChainIdHex) {
+        try {
+          await ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: targetChainIdHex }],
+          });
+        } catch (switchError: any) {
+          if (switchError?.code !== 4902) {
+            throw new Error("Please switch your wallet to 0G Galileo Testnet before uploading.");
+          }
+
+          await ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: targetChainIdHex,
+                chainName: ogTestnet.name,
+                nativeCurrency: ogTestnet.nativeCurrency,
+                rpcUrls: ogTestnet.rpcUrls.default.http,
+                blockExplorerUrls: [ogTestnet.blockExplorers.default.url],
+              },
+            ],
+          });
+        }
+      }
+
+      const provider = new BrowserProvider(ethereum);
+      await provider.send("eth_requestAccounts", []);
       const signer = await provider.getSigner();
 
-      // 3. Initialize 0G SDK objects
-      const RPC_URL = 'https://evmrpc-testnet.0g.ai';
-      // Use local Next.js proxy to bypass CORS
-      const INDEXER_RPC = '/0g-indexer';
-      const indexer = new Indexer(INDEXER_RPC);
+      const encryptionKey = generateAes256Key();
+      const { rootHash } = await uploadBrowserFile(
+        file,
+        ZERO_G_TESTNET,
+        signer as ethers.Signer,
+        undefined,
+        { type: "aes256", key: encryptionKey },
+      );
+      const hexKey = bytesToHex(encryptionKey);
 
-      // 4. Wrap the browser File object into ZgBlob and build the Merkle Tree
-      const zgBlob = new ZgBlob(file);
-      const [tree, treeErr] = await zgBlob.merkleTree();
-      if (treeErr !== null) throw new Error(`Merkle tree error: ${treeErr}`);
-
-      // 5. Upload to 0G Storage
-      const [tx, uploadErr] = await indexer.upload(zgBlob, RPC_URL, signer);
-      if (uploadErr !== null) throw new Error(`Upload error: ${uploadErr}`);
-
-      // The root hash might be nested depending on the file size
-      const rootHash = 'rootHash' in tx ? tx.rootHash : tx.rootHashes[0];
-      return `0g://dataset/${rootHash}`;
-
-
-      // ────────────────────────────────────────────────────────────────────────
-      // SIMULATED IMPLEMENTATION (For UI development)
-      // ────────────────────────────────────────────────────────────────────────
-      console.log("Simulating 0G Storage upload for:", file.name);
-      console.log("Using Wallet:", address);
-
-      // Simulate network delay for upload
-      await new Promise(resolve => setTimeout(resolve, 2500));
-
-      // Generate a fake root hash for UI demo
-      const fakeRootHash = "0x" + Array.from({ length: 64 }, () =>
-        Math.floor(Math.random() * 16).toString(16)
-      ).join('');
-
-      return `0g://dataset/${fakeRootHash}`;
-
+      return `0g://dataset/${rootHash}?key=${hexKey}`;
     } catch (err: any) {
       console.error("0G Storage upload failed:", err);
       setUploadError(err.message || "Failed to upload file to 0G Storage");

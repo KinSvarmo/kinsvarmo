@@ -15,3 +15,21 @@ export interface ZeroGClient {
   }): Promise<ZeroGAgentRecord>;
   buildExplorerUrl(contractAddress: string, tokenId?: string): string;
 }
+
+export {
+  bytesToHex,
+  downloadBrowserFile,
+  generateAes256Key,
+  hexToBytes,
+  peekEncryptionHeader,
+  saveBlobAsFile,
+  uploadBrowserFile,
+} from "./storage";
+
+export type {
+  DecryptionInput,
+  DownloadResult,
+  EncryptionInput,
+  UploadResult,
+  ZeroGNetworkConfig,
+} from "./storage";

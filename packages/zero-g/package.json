@@ -11,6 +11,10 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@0gfoundation/0g-ts-sdk": "^1.2.6",
+    "ethers": "^6.16.0"
+  },
   "devDependencies": {
     "typescript": "^5.5.4"
   }
