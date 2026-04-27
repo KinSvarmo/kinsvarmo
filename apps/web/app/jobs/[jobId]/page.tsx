@@ -17,6 +17,32 @@ type ResultResponse = {
   result: AnalysisResult;
 };
 
+type KeeperHubRunState = "queued" | "running" | "retrying" | "completed" | "failed";
+
+type KeeperHubLogEntry = {
+  id: string;
+  runId: string;
+  timestamp: string;
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+  metadata: Record<string, unknown>;
+};
+
+type KeeperHubRun = {
+  id: string;
+  jobId: string;
+  state: KeeperHubRunState;
+  workflowId?: string;
+  logs: KeeperHubLogEntry[];
+  createdAt: string;
+  updatedAt: string;
+  raw?: unknown;
+};
+
+type KeeperHubResponse = {
+  run: KeeperHubRun;
+};
+
 const MODULES: Array<{
   key: "plannerStatus" | "analyzerStatus" | "criticStatus" | "reporterStatus";
   label: string;
@@ -49,6 +75,8 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
   const [job, setJob] = useState<AnalysisJob | null>(null);
   const [messages, setMessages] = useState<AxlMessage[]>([]);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [keeperHubRun, setKeeperHubRun] = useState<KeeperHubRun | null>(null);
+  const [keeperHubError, setKeeperHubError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
 
@@ -69,6 +97,24 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
         setJob(jobResponse.job);
         setMessages(messagesResponse.messages);
         setError(null);
+
+        if (jobResponse.job.keeperhubRunId) {
+          try {
+            const keeperHubResponse = await fetchJson<KeeperHubResponse>(`/api/jobs/${jobId}/keeperhub`);
+            if (!cancelled) {
+              setKeeperHubRun(keeperHubResponse.run);
+              setKeeperHubError(null);
+            }
+          } catch (caught) {
+            if (!cancelled) {
+              setKeeperHubRun(null);
+              setKeeperHubError(caught instanceof Error ? caught.message : "Unable to load KeeperHub run");
+            }
+          }
+        } else {
+          setKeeperHubRun(null);
+          setKeeperHubError(null);
+        }
 
         if (jobResponse.job.resultId || jobResponse.job.status === "completed") {
           try {
@@ -113,6 +159,8 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
   );
 
   const latestMessage = orderedMessages.at(-1);
+  const keeperHubTrace = getKeeperHubTrace(keeperHubRun?.raw);
+  const keeperHubNodeStatuses = getKeeperHubNodeStatuses(keeperHubRun?.raw);
 
   if (!loadedOnce && !job) {
     return (
@@ -253,12 +301,75 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
           </section>
 
           <section className="glass" style={{ padding: 22 }}>
-            <p className="eyebrow" style={{ marginBottom: 12 }}>KeeperHub</p>
-            <div className="callout callout-info">
-              {job?.keeperhubRunId
-                ? `Run ID: ${job.keeperhubRunId}`
-                : "KeeperHub run ID will appear here once the execution adapter is connected."}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+              <p className="eyebrow">KeeperHub</p>
+              {keeperHubRun && <span className={keeperHubBadge(keeperHubRun.state)}>{keeperHubRun.state}</span>}
             </div>
+            {!job?.keeperhubRunId ? (
+              <div className="callout callout-info">
+                KeeperHub run ID will appear once the backend starts the workflow.
+              </div>
+            ) : keeperHubError ? (
+              <div className="callout callout-warn">
+                KeeperHub run ID: {job.keeperhubRunId}
+                <br />
+                Status fetch failed: {keeperHubError}
+              </div>
+            ) : keeperHubRun ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div className="job-detail-list">
+                  <Detail label="Execution ID" value={job.keeperhubRunId} monospace />
+                  <Detail label="Workflow" value={keeperHubRun.workflowId ?? "pgvk69uxp1yg9bfcmihz9"} monospace />
+                  <Detail label="Logs" value={`${keeperHubRun.logs.length}`} />
+                </div>
+
+                {keeperHubTrace.length > 0 && (
+                  <div>
+                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Execution trace</p>
+                    <div className="keeperhub-trace">
+                      {keeperHubTrace.map((nodeId) => (
+                        <span key={nodeId} className="badge badge-muted">{nodeId}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {keeperHubNodeStatuses.length > 0 && (
+                  <div>
+                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Node status</p>
+                    <div className="keeperhub-node-list">
+                      {keeperHubNodeStatuses.map((node) => (
+                        <div key={node.nodeId} className="keeperhub-node-row">
+                          <span>{node.nodeId}</span>
+                          <strong>{node.status}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {keeperHubRun.logs.length > 0 && (
+                  <div>
+                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Recent logs</p>
+                    <div className="keeperhub-log-list">
+                      {keeperHubRun.logs.slice(0, 5).map((entry) => (
+                        <div key={entry.id} className="keeperhub-log-row">
+                          <span className="font-mono">{formatTime(entry.timestamp)}</span>
+                          <strong>{entry.level}</strong>
+                          <p>{summarizeKeeperHubLog(entry.message)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="callout callout-info">
+                Run ID: {job.keeperhubRunId}
+                <br />
+                Fetching KeeperHub execution state...
+              </div>
+            )}
           </section>
 
           <section className="glass" style={{ padding: 22 }}>
@@ -322,6 +433,62 @@ function formatNumber(value: number): string {
   return Number.isInteger(value) ? value.toString() : value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
 }
 
+function getKeeperHubTrace(raw: unknown): string[] {
+  if (!isRecord(raw)) {
+    return [];
+  }
+
+  const execution = raw.execution;
+  const candidate = isRecord(execution) ? execution.executionTrace : raw.executionTrace;
+
+  return Array.isArray(candidate)
+    ? candidate.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+function getKeeperHubNodeStatuses(raw: unknown): Array<{ nodeId: string; status: string }> {
+  if (!isRecord(raw)) {
+    return [];
+  }
+
+  const candidate = raw.nodeStatuses;
+
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+
+  return candidate.flatMap((entry) => {
+    if (!isRecord(entry) || typeof entry.nodeId !== "string" || typeof entry.status !== "string") {
+      return [];
+    }
+
+    return [{ nodeId: entry.nodeId, status: entry.status }];
+  });
+}
+
+function summarizeKeeperHubLog(message: string): string {
+  try {
+    const parsed = JSON.parse(message) as unknown;
+
+    if (isRecord(parsed)) {
+      const nodeName = typeof parsed.nodeName === "string" ? parsed.nodeName : undefined;
+      const status = typeof parsed.status === "string" ? parsed.status : undefined;
+
+      if (nodeName && status) {
+        return `${nodeName}: ${status}`;
+      }
+    }
+  } catch {
+    // Keep the raw message when it is already human-readable.
+  }
+
+  return message.length > 120 ? `${message.slice(0, 117)}...` : message;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function statusBadge(status: AnalysisJob["status"]): string {
   if (status === "completed") {
     return "badge badge-teal";
@@ -348,4 +515,16 @@ function moduleBadge(status: ModuleStatus): string {
   }
 
   return "badge badge-muted";
+}
+
+function keeperHubBadge(status: KeeperHubRunState): string {
+  if (status === "completed") {
+    return "badge badge-teal";
+  }
+
+  if (status === "failed") {
+    return "badge badge-amber";
+  }
+
+  return "badge badge-blue";
 }

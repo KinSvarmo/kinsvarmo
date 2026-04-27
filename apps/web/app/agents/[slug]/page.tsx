@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useRef, useCallback, useEffect } from "react";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAccount, useConnect, useBalance } from "wagmi";
 import { seededAgents, type AnalysisJob, type AgentListing } from "@kingsvarmo/shared";
@@ -73,6 +73,7 @@ function StepBar({ current }: { current: Step }) {
 
 export default function AgentRunPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
+  const router = useRouter();
   const seededAgent = seededAgents.find((candidate) => candidate.slug === slug || candidate.onchainTokenId === slug);
   const isTokenIdRoute = /^\d+$/.test(slug);
   if (!seededAgent && !isTokenIdRoute) return notFound();
@@ -147,6 +148,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const [apiJobId, setApiJobId] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmittingJob, setIsSubmittingJob] = useState(false);
+  const [isStartingDemoRun, setIsStartingDemoRun] = useState(false);
   const [pendingAnalysisPayload, setPendingAnalysisPayload] = useState<{
     csvText: string;
     filename: string;
@@ -218,6 +220,42 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const storageFee = 0.02;
   const protocolFee = +(basePrice * 0.05).toFixed(3);
   const totalOG = +(basePrice + storageFee + protocolFee).toFixed(3);
+
+  const handleDemoRun = async () => {
+    if (isStartingDemoRun) {
+      return;
+    }
+
+    setApiError(null);
+    setIsStartingDemoRun(true);
+
+    try {
+      const { job } = await fetchJson<{ job: AnalysisJob }>("/api/jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: agent.id,
+          userWallet: address ?? "0x0000000000000000000000000000000000000001",
+          filename: "alkaloid-sample.csv",
+          uploadReference: "demo://alkaloid-sample.csv",
+          inputMetadata: {
+            source: "ui-demo-run",
+            analysisType: "phytochemistry-demo",
+            mode: "local-axl-plus-real-keeperhub"
+          }
+        })
+      });
+
+      await fetchJson<{ job: AnalysisJob | null }>(`/api/jobs/${job.id}/start`, {
+        method: "POST"
+      });
+
+      router.push(`/jobs/${job.id}`);
+    } catch (caught) {
+      setApiError(caught instanceof Error ? caught.message : "Could not start the demo workflow");
+    } finally {
+      setIsStartingDemoRun(false);
+    }
+  };
 
   const handleAuthorize = async () => {
     if (!isConnected) { connect({ connector: injectedConnector }); return; }
@@ -394,6 +432,26 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
               <div className="callout callout-info" style={{ marginTop: 12 }}>
                 <strong>Preview output:</strong> {displayPreview}
               </div>
+              {seededAgent && (
+                <div className="glass" style={{ marginTop: 16, padding: 18, background: "var(--bg-raised)" }}>
+                  <p className="eyebrow" style={{ marginBottom: 8 }}>AXL + KeeperHub test path</p>
+                  <p style={{ color: "var(--text-2)", fontSize: "0.86rem", lineHeight: 1.6, marginBottom: 14 }}>
+                    Start a seeded demo job without wallet payment. This creates an API job, triggers the real KeeperHub workflow, and sends the request through local AXL worker nodes.
+                  </p>
+                  <button
+                    className="btn btn-primary"
+                    disabled={isStartingDemoRun}
+                    onClick={handleDemoRun}
+                  >
+                    {isStartingDemoRun ? "Starting Demo Workflow..." : "Run Demo Analysis"}
+                  </button>
+                </div>
+              )}
+              {apiError && (
+                <div className="callout callout-error" style={{ marginTop: 12 }}>
+                  {apiError}
+                </div>
+              )}
             </div>
           </div>
 

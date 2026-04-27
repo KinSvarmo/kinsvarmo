@@ -335,6 +335,62 @@ code, pre { font-family: "JetBrains Mono", monospace; }
   overflow-wrap: anywhere;
 }
 
+.keeperhub-trace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.keeperhub-node-list,
+.keeperhub-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.keeperhub-node-row,
+.keeperhub-log-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.03);
+  padding: 10px 12px;
+}
+
+.keeperhub-node-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.78rem;
+}
+
+.keeperhub-node-row span {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.keeperhub-node-row strong {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.keeperhub-log-row {
+  display: grid;
+  grid-template-columns: 74px 44px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 0.74rem;
+}
+
+.keeperhub-log-row span,
+.keeperhub-log-row strong {
+  color: var(--text-3);
+}
+
+.keeperhub-log-row p {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 920px) {
   .job-status-layout {
     grid-template-columns: 1fr;
