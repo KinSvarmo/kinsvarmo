@@ -16,6 +16,7 @@ export const seededAgents: AgentListing[] = [
     priceIn0G: "0.25",
     runtimeEstimateSeconds: 90,
     status: "published",
+    onchainTokenId: "1",
     previewOutput: "Predicted alkaloid-like compound families with confidence notes.",
     expectedOutput:
       "A structured report with candidate compound families, confidence, warnings, and provenance.",

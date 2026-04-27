@@ -54,6 +54,7 @@ export default function CreatorPage() {
   const [datasetFile, setDatasetFile] = useState<File | null>(null);
   const [dragover, setDragover] = useState(false);
   const [datasetURI, setDatasetURI] = useState<string>("");
+  const [metadataURI, setMetadataURI] = useState<string>("");
   const [isStoreFlowRunning, setIsStoreFlowRunning] = useState(false);
   const [isMintFlowRunning, setIsMintFlowRunning] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -69,7 +70,6 @@ export default function CreatorPage() {
     priceIn0G: "0.25",
     runtimeSeconds: "90",
     previewOutput: "",
-    intelligenceRef: "",
   });
 
   const set = (key: keyof typeof form, val: string | string[]) =>
@@ -96,6 +96,30 @@ export default function CreatorPage() {
   const metadataHash = keccak256(
     toBytes(JSON.stringify({ name: form.name, domain: form.domain, description: form.description }))
   );
+
+  const intelligenceReference = datasetURI
+    ? `0g://intelligence/${metadataHash.slice(2, 18)}`
+    : "";
+
+  const buildMetadataPayload = (storageReference: string) =>
+    JSON.stringify(
+      {
+        name: form.name,
+        description: form.description,
+        domain: form.domain,
+        creatorName: form.creatorName,
+        previewOutput: form.previewOutput,
+        intelligenceReference,
+        storageReference,
+        datasetURI: storageReference,
+        metadataHash,
+        formats: form.formats,
+        priceIn0G: form.priceIn0G,
+        runtimeSeconds: form.runtimeSeconds,
+      },
+      null,
+      2,
+    );
 
   const canProceed: Record<Step, boolean> = {
     basics: Boolean(form.name && form.description && form.domain && form.creatorName),
@@ -124,6 +148,17 @@ export default function CreatorPage() {
       const storageUri = await uploadFile(datasetFile);
       if (!storageUri) return;
       setDatasetURI(storageUri);
+
+      const metadataFile = new File(
+        [buildMetadataPayload(storageUri)],
+        `${form.slug || form.name || "agent"}.metadata.json`,
+        { type: "application/json" },
+      );
+      const uploadedMetadataURI = await uploadFile(metadataFile);
+      if (uploadedMetadataURI) {
+        setMetadataURI(uploadedMetadataURI);
+      }
+
       setStep("review");
     } finally {
       setIsStoreFlowRunning(false);
@@ -137,7 +172,16 @@ export default function CreatorPage() {
 
     setIsMintFlowRunning(true);
     try {
-      await mint(address!, datasetURI, metadataHash);
+      await mint(address!, datasetURI, metadataHash, {
+        name: form.name,
+        description: form.description,
+        domain: form.domain,
+        creatorName: form.creatorName,
+        previewOutput: form.previewOutput,
+        intelligenceReference,
+        storageReference: datasetURI,
+        metadataURI,
+      });
     } finally {
       setIsMintFlowRunning(false);
     }
@@ -163,6 +207,8 @@ export default function CreatorPage() {
               </a>
             </div>
             <div><span style={{ color: "var(--text-3)" }}>Dataset ref: </span>{datasetURI}</div>
+            <div><span style={{ color: "var(--text-3)" }}>Intelligence ref: </span>{intelligenceReference || "Generated after upload"}</div>
+            {metadataURI && <div><span style={{ color: "var(--text-3)" }}>Metadata URI: </span>{metadataURI}</div>}
           </div>
           <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
             <Link href="/agents" className="btn btn-primary">View in Marketplace</Link>
@@ -263,6 +309,10 @@ export default function CreatorPage() {
                     onChange={(e) => set("previewOutput", e.target.value)}
                   />
                   <span className="input-hint">Shown on the marketplace listing as a sample result description</span>
+                </div>
+
+                <div className="callout callout-info">
+                  Intelligence reference is auto-generated from the uploaded dataset package after you store it on 0G.
                 </div>
               </div>
             </div>
@@ -453,6 +503,8 @@ export default function CreatorPage() {
               <div className="tx-panel" style={{ marginBottom: 20 }}>
                 <div style={{ marginBottom: 4 }}><span style={{ color: "var(--text-3)" }}>Metadata hash (keccak256): </span>{metadataHash}</div>
                 <div><span style={{ color: "var(--text-3)" }}>Dataset URI: </span>{datasetURI || "Will be generated upon upload"}</div>
+                <div><span style={{ color: "var(--text-3)" }}>Intelligence ref: </span>{intelligenceReference || "Will be generated upon upload"}</div>
+                <div><span style={{ color: "var(--text-3)" }}>Metadata URI: </span>{metadataURI || "Will be generated upon upload"}</div>
               </div>
 
               <div className="callout callout-info" style={{ marginBottom: 20 }}>
@@ -484,12 +536,12 @@ export default function CreatorPage() {
                   )}
                   <button
                     className="btn btn-violet btn-lg"
-                    disabled={!datasetURI || isPending || isConfirming}
-                    onClick={handleMint}
-                    style={{ width: "100%", justifyContent: "center" }}
-                  >
-                    {isMintFlowRunning || isMintPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : "Mint iNFT →"}
-                  </button>
+                  disabled={!datasetURI || !metadataURI || isPending || isConfirming}
+                  onClick={handleMint}
+                  style={{ width: "100%", justifyContent: "center" }}
+                >
+                  {isMintFlowRunning || isMintPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : "Mint iNFT →"}
+                </button>
                 </div>
               )}
             </div>

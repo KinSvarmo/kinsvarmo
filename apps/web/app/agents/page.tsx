@@ -52,7 +52,7 @@ export default function AgentsPage() {
       {/* Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 20 }}>
         {agents.map((agent) => (
-          <Link key={agent.id} href={`/agents/${agent.slug}`} style={{ display: "contents" }}>
+          <Link key={agent.id} href={`/agents/${agent.onchainTokenId ?? agent.slug}`} style={{ display: "contents" }}>
             <article className="agent-card">
               <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
                 <div className="agent-avatar" style={{ fontSize: "1.5rem" }}>

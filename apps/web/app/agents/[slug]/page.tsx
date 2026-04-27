@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { use, useState, useRef, useCallback, useEffect } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { useAccount, useConnect, useBalance } from "wagmi";
-import { seededAgents, type AnalysisJob } from "@kingsvarmo/shared";
+import { seededAgents, type AnalysisJob, type AgentListing } from "@kingsvarmo/shared";
 import { useCreateJob } from "@/hooks/useAnalysisEscrow";
+import { useINFTToken, useTokenMetadata } from "@/hooks/useINFTRegistry";
 import { fetchJson } from "@/lib/api";
 import { ogTestnet } from "@/lib/chain";
+import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { injectedConnector } from "@/lib/wagmi";
 import { formatUnits, parseEther } from "viem";
 
@@ -70,9 +72,72 @@ function StepBar({ current }: { current: Step }) {
   );
 }
 
-export default function AgentRunPage({ params }: { params: { slug: string } }) {
-  const agent = seededAgents.find((a) => a.slug === params.slug);
-  if (!agent) return notFound();
+export default function AgentRunPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = use(params);
+  const seededAgent = seededAgents.find((candidate) => candidate.slug === slug || candidate.onchainTokenId === slug);
+  const isTokenIdRoute = /^\d+$/.test(slug);
+  if (!seededAgent && !isTokenIdRoute) return notFound();
+  const tokenIdBigInt = seededAgent?.onchainTokenId
+    ? BigInt(seededAgent.onchainTokenId)
+    : isTokenIdRoute
+      ? BigInt(slug)
+      : undefined;
+  const token = useINFTToken(tokenIdBigInt);
+  const onchainMetadata = token.agentMetadata.data;
+  const onchainTokenURI = token.tokenURI.data;
+  const tokenMetadata = useTokenMetadata(onchainTokenURI ? String(onchainTokenURI) : undefined);
+  const tokenId = tokenIdBigInt?.toString() ?? seededAgent?.onchainTokenId ?? slug;
+  const contractAddress = seededAgent?.contractAddress ?? CONTRACT_ADDRESSES.INFTRegistry;
+
+  const resolvedFormats = tokenMetadata.data?.formats?.length
+    ? tokenMetadata.data.formats
+    : seededAgent?.supportedFormats ?? ["csv", "json"];
+  const resolvedCreatorName = tokenMetadata.data?.creatorName || onchainMetadata?.[3] || seededAgent?.creatorName || "Onchain creator";
+  const resolvedName = tokenMetadata.data?.name || onchainMetadata?.[0] || seededAgent?.name || `iNFT #${tokenId}`;
+  const resolvedDescription = tokenMetadata.data?.description || onchainMetadata?.[1] || seededAgent?.description || "Readable metadata is still loading from the token URI.";
+  const resolvedPreview = tokenMetadata.data?.previewOutput || seededAgent?.previewOutput || "No preview output available yet.";
+  const resolvedIntelligenceRef = tokenMetadata.data?.intelligenceReference || onchainMetadata?.[5] || seededAgent?.intelligenceReference || "—";
+  const resolvedStorageRef = tokenMetadata.data?.storageReference || onchainMetadata?.[6] || seededAgent?.storageReference || "—";
+  const resolvedPrice = tokenMetadata.data?.priceIn0G || seededAgent?.priceIn0G || "0";
+  const resolvedRuntimeSeconds = tokenMetadata.data?.runtimeSeconds
+    ? Number(tokenMetadata.data.runtimeSeconds)
+    : seededAgent?.runtimeEstimateSeconds ?? 120;
+
+  const fallbackAgent: AgentListing = {
+    id: `agent_token_${tokenId}`,
+    onchainTokenId: tokenId,
+    contractAddress,
+    name: resolvedName,
+    slug,
+    creatorName: resolvedCreatorName,
+    creatorWallet: token.owner.data ? String(token.owner.data) : "0x0000000000000000000000000000000000000000",
+    description: resolvedDescription,
+    longDescription: resolvedDescription,
+    domain: tokenMetadata.data?.domain || seededAgent?.domain || "onchain",
+    supportedFormats: resolvedFormats as AgentListing["supportedFormats"],
+    priceIn0G: resolvedPrice,
+    runtimeEstimateSeconds: resolvedRuntimeSeconds,
+    status: "published",
+    previewOutput: resolvedPreview,
+    expectedOutput: resolvedPreview,
+    privacyNotes: seededAgent?.privacyNotes || "Onchain token metadata",
+    createdAt: seededAgent?.createdAt || "1970-01-01T00:00:00.000Z",
+    ...(resolvedIntelligenceRef !== "—" ? { intelligenceReference: resolvedIntelligenceRef } : {}),
+    ...(resolvedStorageRef !== "—" ? { storageReference: resolvedStorageRef } : {}),
+  };
+  const agent = seededAgent ?? fallbackAgent;
+  const displayName = resolvedName;
+  const displayCreator = resolvedCreatorName;
+  const displayDescription = resolvedDescription;
+  const displayPreview = resolvedPreview;
+  const displayIntelligenceRef = resolvedIntelligenceRef;
+  const displayStorageRef = resolvedStorageRef;
+  const displayPrice = resolvedPrice;
+  const displayRuntime = `~${Math.round(resolvedRuntimeSeconds / 60)} min`;
+  const displayFormats = resolvedFormats.map((format) => `.${format}`).join(", ");
+  const explorerContractUrl = contractAddress
+    ? `${ogTestnet.blockExplorers.default.url}/address/${contractAddress}`
+    : ogTestnet.blockExplorers.default.url;
 
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -243,8 +308,8 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 32 }}>
             <div className="agent-avatar" style={{ fontSize: "2rem", width: 64, height: 64 }}>🌿</div>
             <div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <h1 style={{ fontSize: "1.6rem" }}>{agent.name}</h1>
+            <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <h1 style={{ fontSize: "1.6rem" }}>{displayName}</h1>
                 <span className="badge badge-teal">Published</span>
                 {agent.intelligenceReference && (
                   <a
@@ -260,9 +325,12 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
                 )}
               </div>
               <p style={{ color: "var(--text-2)", fontSize: "0.9rem", marginBottom: 4 }}>
-                by {agent.creatorName}
+                by {displayCreator}
               </p>
-              <p style={{ color: "var(--text-2)", lineHeight: 1.6 }}>{agent.description}</p>
+              <p style={{ color: "var(--text-2)", lineHeight: 1.6 }}>{displayDescription}</p>
+              <div className="callout callout-info" style={{ marginTop: 12 }}>
+                <strong>Preview output:</strong> {displayPreview}
+              </div>
             </div>
           </div>
 
@@ -494,13 +562,70 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
         {/* ── Sidebar ── */}
         <div style={{ position: "sticky", top: 80 }}>
           <div className="glass" style={{ padding: 24, marginBottom: 16 }}>
+            <p className="eyebrow" style={{ marginBottom: 12, fontSize: "0.7rem" }}>Onchain metadata</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 4 }}>Token ID</p>
+                <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)" }}>
+                  {tokenId}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 4 }}>Contract address</p>
+                <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
+                  {contractAddress}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 4 }}>Intelligence reference</p>
+                <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
+                  {displayIntelligenceRef}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 4 }}>Owner</p>
+                <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
+                  {token.owner.data ? String(token.owner.data) : "Loading..."}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 4 }}>Metadata hash</p>
+                <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
+                  {token.metadataHash.data ? String(token.metadataHash.data) : "Loading..."}
+                </p>
+              </div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-3)", lineHeight: 1.5 }}>
+                The hash is a fingerprint only. Readable metadata now comes from the token URI JSON.
+              </div>
+              <div>
+                <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 4 }}>Token URI</p>
+                <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
+                  {onchainTokenURI || onchainMetadata?.[7] || "Loading..."}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 4 }}>Explorer</p>
+                <a
+                  href={explorerContractUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-ghost btn-sm"
+                  style={{ textAlign: "center", justifyContent: "center" }}
+                >
+                  View contract on 0G ↗
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass" style={{ padding: 24, marginBottom: 16 }}>
             <p className="eyebrow" style={{ marginBottom: 12, fontSize: "0.7rem" }}>Agent details</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {[
-                { label: "Price", value: `${agent.priceIn0G} OG`, color: "var(--teal)" },
-                { label: "Runtime", value: `~${Math.round(agent.runtimeEstimateSeconds / 60)} min` },
-                { label: "Formats", value: agent.supportedFormats.map((f) => `.${f}`).join(", ") },
-                { label: "Creator", value: agent.creatorName },
+                { label: "Price", value: `${displayPrice} OG`, color: "var(--teal)" },
+                { label: "Runtime", value: displayRuntime },
+                { label: "Formats", value: displayFormats },
+                { label: "Creator", value: displayCreator },
               ].map(({ label, value, color }) => (
                 <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
                   <span style={{ color: "var(--text-3)" }}>{label}</span>
@@ -510,32 +635,32 @@ export default function AgentRunPage({ params }: { params: { slug: string } }) {
             </div>
           </div>
 
-          {agent.intelligenceReference && (
+          {(displayIntelligenceRef !== "—" || displayStorageRef !== "—") && (
             <div className="glass" style={{ padding: 24, marginBottom: 16 }}>
               <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>0G References</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div>
                   <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 2 }}>Intelligence</p>
                   <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
-                    {agent.intelligenceReference}
+                    {displayIntelligenceRef}
                   </p>
                 </div>
-                {agent.storageReference && (
+                {displayStorageRef !== "—" && (
                   <div>
                     <p style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 2 }}>Metadata</p>
                     <p className="font-mono" style={{ fontSize: "0.72rem", color: "var(--teal)", wordBreak: "break-all" }}>
-                      {agent.storageReference}
+                      {displayStorageRef}
                     </p>
                   </div>
                 )}
                 <a
-                  href="https://chainscan-galileo.0g.ai"
+                  href={explorerContractUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-ghost btn-sm"
                   style={{ marginTop: 8, textAlign: "center", justifyContent: "center" }}
                 >
-                  View on 0G Explorer ↗
+                  View contract on 0G ↗
                 </a>
               </div>
             </div>

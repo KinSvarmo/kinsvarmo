@@ -12,7 +12,19 @@ interface IOracle {
 contract INFT is ERC721, Ownable, ReentrancyGuard {
     uint256 public constant USAGE_FEE = 0.01 ether;
 
+    struct AgentMetadata {
+        string name;
+        string description;
+        string domain;
+        string creatorName;
+        string previewOutput;
+        string intelligenceReference;
+        string storageReference;
+        string metadataURI;
+    }
+
     // State variables
+    mapping(uint256 => AgentMetadata) private _agentMetadata;
     mapping(uint256 => bytes32) private _metadataHashes;
     mapping(uint256 => string) private _encryptedURIs;
     mapping(uint256 => mapping(address => bytes)) private _authorizations;
@@ -40,14 +52,16 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
     function mint(
         address to,
         string calldata encryptedURI,
-        bytes32 metadataHash
+        bytes32 metadataHash,
+        AgentMetadata calldata metadata
     ) external onlyOwner returns (uint256) {
         uint256 tokenId = _nextTokenId++;
         _safeMint(to, tokenId);
-        
+
+        _agentMetadata[tokenId] = metadata;
         _encryptedURIs[tokenId] = encryptedURI;
         _metadataHashes[tokenId] = metadataHash;
-        
+
         return tokenId;
     }
     
@@ -119,6 +133,35 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
         return _encryptedURIs[tokenId];
     }
 
+    function getAgentMetadata(
+        uint256 tokenId
+    )
+        external
+        view
+        returns (
+            string memory name,
+            string memory description,
+            string memory domain,
+            string memory creatorName,
+            string memory previewOutput,
+            string memory intelligenceReference,
+            string memory storageReference,
+            string memory metadataURI
+        )
+    {
+        AgentMetadata storage metadata = _agentMetadata[tokenId];
+        return (
+            metadata.name,
+            metadata.description,
+            metadata.domain,
+            metadata.creatorName,
+            metadata.previewOutput,
+            metadata.intelligenceReference,
+            metadata.storageReference,
+            metadata.metadataURI
+        );
+    }
+
     function getAuthorization(
         uint256 tokenId,
         address executor
@@ -133,5 +176,12 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
     ) internal {
         _authorizations[tokenId][executor] = permissions;
         emit UsageAuthorized(tokenId, executor);
+    }
+
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(_ownerOf(tokenId) != address(0), "Nonexistent token");
+
+        string memory metadataURI = _agentMetadata[tokenId].metadataURI;
+        return bytes(metadataURI).length > 0 ? metadataURI : "";
     }
 }
