@@ -75,6 +75,7 @@ export function use0GStorage() {
         signer as ethers.Signer,
         undefined,
         { type: "aes256", key: encryptionKey },
+        "dataset",
       );
       const hexKey = bytesToHex(encryptionKey);
 

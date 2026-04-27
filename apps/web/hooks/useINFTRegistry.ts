@@ -4,6 +4,8 @@ import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 
 import { INFTRegistryABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
 import type { Address } from "viem";
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
 export function useGetEncryptedURI(tokenId: bigint | undefined) {
   return useReadContract({
     address: CONTRACT_ADDRESSES.INFTRegistry,
@@ -29,6 +31,10 @@ export function useMintINFT() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   function mint(to: Address, encryptedURI: string, metadataHash: `0x${string}`) {
+    if (CONTRACT_ADDRESSES.INFTRegistry === ZERO_ADDRESS) {
+      throw new Error("INFT registry address is not configured. Set NEXT_PUBLIC_INFT_REGISTRY_ADDRESS.");
+    }
+
     writeContract({
       address: CONTRACT_ADDRESSES.INFTRegistry,
       abi: INFTRegistryABI,

@@ -2,8 +2,12 @@ import type { Abi } from "viem";
 
 // ─── Placeholder Addresses ───────────────────────────────────────────────────
 // These will be replaced with real deployed addresses after contracts go live.
+const INFT_REGISTRY_ADDRESS =
+  process.env.NEXT_PUBLIC_INFT_REGISTRY_ADDRESS?.trim() ??
+  "0x0000000000000000000000000000000000000000";
+
 export const CONTRACT_ADDRESSES = {
-  INFTRegistry: "0x0000000000000000000000000000000000000000" as `0x${string}`,
+  INFTRegistry: INFT_REGISTRY_ADDRESS as `0x${string}`,
   UsageAuthorizationManager: "0x0000000000000000000000000000000000000000" as `0x${string}`,
   AnalysisEscrow: "0x0000000000000000000000000000000000000000" as `0x${string}`,
 } as const;

@@ -8,12 +8,12 @@ import { useMintINFT } from "@/hooks/useINFTRegistry";
 import { use0GStorage } from "@/hooks/use0GStorage";
 import { injectedConnector } from "@/lib/wagmi";
 
-type Step = "basics" | "config" | "script" | "review";
-const STEP_ORDER: Step[] = ["basics", "config", "script", "review"];
+type Step = "basics" | "config" | "dataset" | "review";
+const STEP_ORDER: Step[] = ["basics", "config", "dataset", "review"];
 const STEP_LABELS: Record<Step, string> = {
   basics: "Agent Info",
   config: "Pricing & Config",
-  script: "Upload Script",
+  dataset: "Upload Dataset",
   review: "Review & Mint",
 };
 
@@ -38,6 +38,11 @@ function StepBar({ current }: { current: Step }) {
 
 const DOMAINS = ["Phytochemistry", "Genomics", "Materials Science", "Environmental Chemistry", "Medical Imaging", "Other"];
 const FORMATS = ["csv", "json", "tsv", "txt", "fasta", "h5"];
+const ACCEPTED_DATASET_EXTENSIONS = [".jsonl"];
+
+function isJsonlFile(file: File): boolean {
+  return ACCEPTED_DATASET_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
+}
 
 export default function CreatorPage() {
   const { address, isConnected } = useAccount();
@@ -46,9 +51,9 @@ export default function CreatorPage() {
   const { uploadFile, isUploading, uploadError } = use0GStorage();
 
   const [step, setStep] = useState<Step>("basics");
-  const [scriptFile, setScriptFile] = useState<File | null>(null);
+  const [datasetFile, setDatasetFile] = useState<File | null>(null);
   const [dragover, setDragover] = useState(false);
-  const [encryptedURI, setEncryptedURI] = useState<string>("");
+  const [datasetURI, setDatasetURI] = useState<string>("");
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -71,13 +76,18 @@ export default function CreatorPage() {
   const toggleFormat = (f: string) =>
     set("formats", form.formats.includes(f) ? form.formats.filter((x) => x !== f) : [...form.formats, f]);
 
-  const handleScriptFile = (f: File) => setScriptFile(f);
+  const handleDatasetFile = (f: File) => {
+    if (!isJsonlFile(f)) {
+      return;
+    }
+    setDatasetFile(f);
+  };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragover(false);
     const f = e.dataTransfer.files[0];
-    if (f) handleScriptFile(f);
+    if (f) handleDatasetFile(f);
   };
 
   // Derive a deterministic metadata hash from form data
@@ -88,7 +98,7 @@ export default function CreatorPage() {
   const canProceed: Record<Step, boolean> = {
     basics: Boolean(form.name && form.description && form.domain && form.creatorName),
     config: form.formats.length > 0 && Boolean(form.priceIn0G),
-    script: Boolean(scriptFile),
+    dataset: Boolean(datasetFile),
     review: isConnected,
   };
 
@@ -104,17 +114,16 @@ export default function CreatorPage() {
 
   const handleMint = async () => {
     if (!isConnected) { connect({ connector: injectedConnector }); return; }
-    if (!scriptFile) return;
+    if (!datasetFile) return;
 
     // 1. Upload to 0G Storage
-    const storageUri = await uploadFile(scriptFile);
+    const storageUri = await uploadFile(datasetFile);
     if (!storageUri) return; // Upload failed
-    
-    setEncryptedURI(storageUri);
+
+    setDatasetURI(storageUri);
 
     // 2. Mint the iNFT pointing to the 0G Storage URI
-    // Uncomment when contracts are live:
-    // mint(address!, storageUri, metadataHash);
+    mint(address!, storageUri, metadataHash);
   };
 
   const isPending = isUploading || isMintPending;
@@ -136,7 +145,7 @@ export default function CreatorPage() {
                 {txHash.slice(0, 20)}…
               </a>
             </div>
-            <div><span style={{ color: "var(--text-3)" }}>Intelligence ref: </span>{encryptedURI}</div>
+            <div><span style={{ color: "var(--text-3)" }}>Dataset ref: </span>{datasetURI}</div>
           </div>
           <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
             <Link href="/agents" className="btn btn-primary">View in Marketplace</Link>
@@ -156,7 +165,7 @@ export default function CreatorPage() {
           Mint your scientific iNFT
         </h1>
         <p style={{ color: "var(--text-2)", maxWidth: 560, lineHeight: 1.6 }}>
-          Publish your analysis logic as a private ERC-7857 iNFT on 0G. Your script stays encrypted —
+          Publish your analysis workflow as a private ERC-7857 iNFT on 0G. Your dataset stays encrypted —
           users pay to run it, you earn per execution.
         </p>
       </div>
@@ -308,18 +317,18 @@ export default function CreatorPage() {
             </div>
           )}
 
-          {/* Step 3: Upload Script */}
-          {step === "script" && (
+          {/* Step 3: Upload Dataset */}
+          {step === "dataset" && (
             <div className="glass-lg" style={{ padding: 32 }}>
-              <h2 style={{ fontSize: "1.1rem", marginBottom: 8 }}>Upload Analysis Script</h2>
+              <h2 style={{ fontSize: "1.1rem", marginBottom: 8 }}>Upload Training Dataset</h2>
               <p style={{ color: "var(--text-2)", fontSize: "0.88rem", marginBottom: 24, lineHeight: 1.6 }}>
-                Your script will be <strong style={{ color: "var(--teal)" }}>encrypted using AES-256-GCM</strong> before
+                Your dataset will be <strong style={{ color: "var(--teal)" }}>encrypted using AES-256-GCM</strong> before
                 being stored on 0G Storage. Only authorized executions via the iNFT contract can access it.
-                Users never see your raw code.
+                Users never see your raw training data.
               </p>
 
               <div
-                className={`upload-zone ${dragover ? "dragover" : ""} ${scriptFile ? "has-file" : ""}`}
+                className={`upload-zone ${dragover ? "dragover" : ""} ${datasetFile ? "has-file" : ""}`}
                 onClick={() => fileInput.current?.click()}
                 onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
                 onDragLeave={() => setDragover(false)}
@@ -330,29 +339,29 @@ export default function CreatorPage() {
                     <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
-                {scriptFile ? (
+                {datasetFile ? (
                   <>
-                    <p style={{ fontWeight: 600, color: "var(--teal)", marginBottom: 4 }}>✓ {scriptFile.name}</p>
+                    <p style={{ fontWeight: 600, color: "var(--teal)", marginBottom: 4 }}>✓ {datasetFile.name}</p>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-3)" }}>
-                      {(scriptFile.size / 1024).toFixed(1)} KB — click to replace
+                      {(datasetFile.size / 1024).toFixed(1)} KB — click to replace
                     </p>
                   </>
                 ) : (
                   <>
-                    <p style={{ fontWeight: 600, marginBottom: 6 }}>Drop your analysis script here</p>
+                    <p style={{ fontWeight: 600, marginBottom: 6 }}>Drop your training dataset here</p>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-3)" }}>
-                      .py, .r, .js, .ipynb — any executable format
+                      .jsonl only
                     </p>
                   </>
                 )}
                 <input
                   ref={fileInput}
                   type="file"
-                  accept=".py,.r,.R,.js,.ts,.ipynb,.sh"
+                  accept=".jsonl"
                   style={{ display: "none" }}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) handleScriptFile(f);
+                    if (f) handleDatasetFile(f);
                   }}
                 />
               </div>
@@ -361,13 +370,13 @@ export default function CreatorPage() {
                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: 1 }}>
                   <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
                 </svg>
-                <span>Your IP is protected. The script is encrypted client-side before upload. The decryption key is sealed to the iNFT and only accessible during authorized TEE execution.</span>
+                <span>Your IP is protected. The dataset is encrypted client-side before upload. The decryption key is sealed to the iNFT and only accessible during authorized TEE execution.</span>
               </div>
 
               <div className="glass" style={{ padding: 16, marginTop: 16 }}>
                 <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>Storage flow</p>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "var(--text-2)", flexWrap: "wrap" }}>
-                  {["Your script", "AES-256 encrypt", "0G Storage", "URI in iNFT"].map((step, i, arr) => (
+                  {["Your dataset", "AES-256 encrypt", "0G Storage", "URI in iNFT"].map((step, i, arr) => (
                     <>
                       <span key={step} style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", background: "var(--surface)" }}>{step}</span>
                       {i < arr.length - 1 && <span key={`arrow-${i}`} style={{ color: "var(--teal)" }}>→</span>}
@@ -385,13 +394,13 @@ export default function CreatorPage() {
 
               {/* Summary */}
               <div style={{ display: "flex", flexDirection: "column", gap: 0, marginBottom: 24 }}>
-                {[
+                  {[
                   { label: "Name", value: form.name },
                   { label: "Domain", value: form.domain },
                   { label: "Creator", value: form.creatorName },
                   { label: "Price", value: `${form.priceIn0G} OG / run`, color: "var(--teal)" },
                   { label: "Formats", value: form.formats.map((f) => `.${f}`).join(", ") },
-                  { label: "Script", value: scriptFile?.name ?? "—" },
+                  { label: "Dataset", value: datasetFile?.name ?? "—" },
                   { label: "Runtime", value: `~${Math.round(parseInt(form.runtimeSeconds) / 60)} min` },
                 ].map(({ label, value, color }) => (
                   <div className="cost-row" key={label} style={{ fontSize: "0.88rem" }}>
@@ -404,7 +413,7 @@ export default function CreatorPage() {
               {/* Metadata hash preview */}
               <div className="tx-panel" style={{ marginBottom: 20 }}>
                 <div style={{ marginBottom: 4 }}><span style={{ color: "var(--text-3)" }}>Metadata hash (keccak256): </span>{metadataHash}</div>
-                <div><span style={{ color: "var(--text-3)" }}>Encrypted URI: </span>{encryptedURI || "Will be generated upon upload"}</div>
+                <div><span style={{ color: "var(--text-3)" }}>Dataset URI: </span>{datasetURI || "Will be generated upon upload"}</div>
               </div>
 
               <div className="callout callout-info" style={{ marginBottom: 20 }}>
@@ -435,7 +444,7 @@ export default function CreatorPage() {
                     onClick={handleMint}
                     style={{ width: "100%", justifyContent: "center" }}
                   >
-                    {isUploading ? "Uploading to 0G Storage…" : isMintPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : "Upload & Mint iNFT →"}
+                    {isUploading ? "Uploading dataset to 0G Storage…" : isMintPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : "Upload & Mint iNFT →"}
                   </button>
                 </div>
               )}
@@ -469,7 +478,7 @@ export default function CreatorPage() {
             <p className="eyebrow" style={{ marginBottom: 14, fontSize: "0.7rem" }}>What gets minted</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {[
-                { icon: "🔐", title: "Encrypted intelligence", desc: "Your script on 0G Storage" },
+                { icon: "🔐", title: "Encrypted dataset", desc: "Your training data on 0G Storage" },
                 { icon: "📜", title: "ERC-7857 iNFT", desc: "Ownership token on 0G Chain" },
                 { icon: "💰", title: "Revenue logic", desc: "Pay-per-run in OG token" },
                 { icon: "🛡️", title: "Access control", desc: "TEE-gated execution rights" },

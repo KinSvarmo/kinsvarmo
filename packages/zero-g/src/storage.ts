@@ -79,8 +79,13 @@ export async function uploadBrowserFile(
   signer: ethers.Signer,
   onStatus?: (message: string) => void,
   encryption?: EncryptionInput,
+  resourceLabel: string = "file",
 ): Promise<UploadResult> {
-  onStatus?.(encryption ? `Preparing file (${encryption.type} encrypt)...` : "Preparing file...");
+  onStatus?.(
+    encryption
+      ? `Preparing ${resourceLabel} (${encryption.type} encrypt)...`
+      : `Preparing ${resourceLabel}...`,
+  );
 
   const blob = new ZgBlob(file);
   const indexer = new Indexer(network.indexerRpc);
@@ -90,7 +95,7 @@ export async function uploadBrowserFile(
     throw new Error(`Merkle tree generation failed: ${treeErr}`);
   }
 
-  onStatus?.("Uploading to 0G Storage...");
+  onStatus?.(`Uploading ${resourceLabel} to 0G Storage...`);
 
   const uploadOptions: UploadOption | undefined = encryption
     ? { encryption: toSdkEncryption(encryption) }
