@@ -26,11 +26,38 @@ export const INFTRegistryABI = [
     outputs: [{ name: "tokenId", type: "uint256" }],
   },
   {
+    name: "purchaseUsage",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "permissions", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "USAGE_FEE",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
     name: "getEncryptedURI",
     type: "function",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
     outputs: [{ name: "", type: "string" }],
+  },
+  {
+    name: "getAuthorization",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "executor", type: "address" },
+    ],
+    outputs: [{ name: "", type: "bytes" }],
   },
   {
     name: "ownerOf",

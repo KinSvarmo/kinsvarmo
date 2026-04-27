@@ -1,6 +1,6 @@
 "use client";
 
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { INFTRegistryABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
 import type { Address } from "viem";
 
@@ -27,15 +27,15 @@ export function useOwnerOf(tokenId: bigint | undefined) {
 }
 
 export function useMintINFT() {
-  const { writeContract, data: txHash, isPending, error } = useWriteContract();
+  const { writeContractAsync, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
-  function mint(to: Address, encryptedURI: string, metadataHash: `0x${string}`) {
+  async function mint(to: Address, encryptedURI: string, metadataHash: `0x${string}`) {
     if (CONTRACT_ADDRESSES.INFTRegistry === ZERO_ADDRESS) {
       throw new Error("INFT registry address is not configured. Set NEXT_PUBLIC_INFT_REGISTRY_ADDRESS.");
     }
 
-    writeContract({
+    return writeContractAsync({
       address: CONTRACT_ADDRESSES.INFTRegistry,
       abi: INFTRegistryABI,
       functionName: "mint",

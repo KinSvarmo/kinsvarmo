@@ -54,6 +54,8 @@ export default function CreatorPage() {
   const [datasetFile, setDatasetFile] = useState<File | null>(null);
   const [dragover, setDragover] = useState(false);
   const [datasetURI, setDatasetURI] = useState<string>("");
+  const [isStoreFlowRunning, setIsStoreFlowRunning] = useState(false);
+  const [isMintFlowRunning, setIsMintFlowRunning] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -112,21 +114,36 @@ export default function CreatorPage() {
     if (next) setStep(next);
   };
 
-  const handleMint = async () => {
+  const handleUpload = async () => {
+    if (isStoreFlowRunning || isUploading || isMintPending || isConfirming) return;
     if (!isConnected) { connect({ connector: injectedConnector }); return; }
     if (!datasetFile) return;
 
-    // 1. Upload to 0G Storage
-    const storageUri = await uploadFile(datasetFile);
-    if (!storageUri) return; // Upload failed
-
-    setDatasetURI(storageUri);
-
-    // 2. Mint the iNFT pointing to the 0G Storage URI
-    mint(address!, storageUri, metadataHash);
+    setIsStoreFlowRunning(true);
+    try {
+      const storageUri = await uploadFile(datasetFile);
+      if (!storageUri) return;
+      setDatasetURI(storageUri);
+      setStep("review");
+    } finally {
+      setIsStoreFlowRunning(false);
+    }
   };
 
-  const isPending = isUploading || isMintPending;
+  const handleMint = async () => {
+    if (isMintFlowRunning || isUploading || isMintPending || isConfirming) return;
+    if (!isConnected) { connect({ connector: injectedConnector }); return; }
+    if (!datasetURI) return;
+
+    setIsMintFlowRunning(true);
+    try {
+      await mint(address!, datasetURI, metadataHash);
+    } finally {
+      setIsMintFlowRunning(false);
+    }
+  };
+
+  const isPending = isStoreFlowRunning || isMintFlowRunning || isUploading || isMintPending;
 
   if (isSuccess && txHash) {
     return (
@@ -373,6 +390,28 @@ export default function CreatorPage() {
                 <span>Your IP is protected. The dataset is encrypted client-side before upload. The decryption key is sealed to the iNFT and only accessible during authorized TEE execution.</span>
               </div>
 
+              <div className="callout callout-info" style={{ marginTop: 16 }}>
+                First store the dataset on 0G Storage. After that succeeds, we’ll move to the mint step.
+              </div>
+
+              <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button
+                  className="btn btn-violet btn-lg"
+                  disabled={!datasetFile || isUploading || isPending || isConfirming}
+                  onClick={handleUpload}
+                >
+                  {isStoreFlowRunning || isUploading ? "Uploading dataset to 0G Storage…" : "Store Dataset on 0G"}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => setStep("review")}
+                  disabled={!datasetURI}
+                >
+                  Go to mint step
+                </button>
+              </div>
+
               <div className="glass" style={{ padding: 16, marginTop: 16 }}>
                 <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>Storage flow</p>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "var(--text-2)", flexWrap: "wrap" }}>
@@ -417,7 +456,7 @@ export default function CreatorPage() {
               </div>
 
               <div className="callout callout-info" style={{ marginBottom: 20 }}>
-                Smart contract not yet deployed to 0G testnet. Clicking below will simulate the file upload to 0G Storage and display the UI flow.
+                Your dataset is already stored on 0G Storage. Minting will only record the encrypted URI on-chain.
               </div>
 
               {(mintError || uploadError) && (
@@ -438,13 +477,18 @@ export default function CreatorPage() {
                   <div style={{ fontSize: "0.82rem", color: "var(--text-3)", marginBottom: 16 }}>
                     Minting as: <span style={{ color: "var(--text)", fontFamily: "monospace" }}>{address}</span>
                   </div>
+                  {!datasetURI && (
+                    <div className="callout callout-warn" style={{ marginBottom: 16 }}>
+                      Store the dataset first before minting.
+                    </div>
+                  )}
                   <button
                     className="btn btn-violet btn-lg"
-                    disabled={isPending || isConfirming}
+                    disabled={!datasetURI || isPending || isConfirming}
                     onClick={handleMint}
                     style={{ width: "100%", justifyContent: "center" }}
                   >
-                    {isUploading ? "Uploading dataset to 0G Storage…" : isMintPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : "Upload & Mint iNFT →"}
+                    {isMintFlowRunning || isMintPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : "Mint iNFT →"}
                   </button>
                 </div>
               )}
