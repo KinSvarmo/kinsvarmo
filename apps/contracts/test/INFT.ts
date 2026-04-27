@@ -31,6 +31,54 @@ describe("INFT", function () {
     return { owner, recipient, stranger, oracle, oracleAddress, inft, metadata };
   }
 
+  async function mintSampleToken(
+    inft: any,
+    ownerAddress: string,
+    metadata: {
+      name: string;
+      description: string;
+      domain: string;
+      creatorName: string;
+      previewOutput: string;
+      intelligenceReference: string;
+      storageReference: string;
+      metadataURI: string;
+    },
+    overrides?: Partial<{
+      encryptedURI: string;
+      metadataHash: string;
+    }>,
+  ) {
+    const encryptedURI = overrides?.encryptedURI ?? "0g://dataset/original";
+    const metadataHash = overrides?.metadataHash ?? ethers.ZeroHash;
+
+    await inft.mint(ownerAddress, encryptedURI, metadataHash, metadata);
+    return { encryptedURI, metadataHash };
+  }
+
+  function expectStoredMetadata(
+    storedMetadata: readonly string[],
+    metadata: {
+      name: string;
+      description: string;
+      domain: string;
+      creatorName: string;
+      previewOutput: string;
+      intelligenceReference: string;
+      storageReference: string;
+      metadataURI: string;
+    },
+  ) {
+    expect(storedMetadata[0]).to.equal(metadata.name);
+    expect(storedMetadata[1]).to.equal(metadata.description);
+    expect(storedMetadata[2]).to.equal(metadata.domain);
+    expect(storedMetadata[3]).to.equal(metadata.creatorName);
+    expect(storedMetadata[4]).to.equal(metadata.previewOutput);
+    expect(storedMetadata[5]).to.equal(metadata.intelligenceReference);
+    expect(storedMetadata[6]).to.equal(metadata.storageReference);
+    expect(storedMetadata[7]).to.equal(metadata.metadataURI);
+  }
+
   it("deploys with the oracle address and lets the owner mint", async function () {
     const { owner, oracleAddress, inft, metadata } = await deployFixture();
 
@@ -45,20 +93,41 @@ describe("INFT", function () {
     expect(await inft.tokenURI(1n)).to.equal(metadata.metadataURI);
 
     const storedMetadata = await inft.getAgentMetadata(1n);
-    expect(storedMetadata[0]).to.equal(metadata.name);
-    expect(storedMetadata[1]).to.equal(metadata.description);
-    expect(storedMetadata[2]).to.equal(metadata.domain);
-    expect(storedMetadata[3]).to.equal(metadata.creatorName);
-    expect(storedMetadata[4]).to.equal(metadata.previewOutput);
-    expect(storedMetadata[5]).to.equal(metadata.intelligenceReference);
-    expect(storedMetadata[6]).to.equal(metadata.storageReference);
-    expect(storedMetadata[7]).to.equal(metadata.metadataURI);
+    expectStoredMetadata(storedMetadata, metadata);
+  });
+
+  it("increments token IDs and keeps metadata isolated per mint", async function () {
+    const { owner, recipient, inft, metadata } = await deployFixture();
+    const secondMetadata = {
+      ...metadata,
+      name: "Dose Response Predictor",
+      metadataURI: "0g://metadata/dose-response.json",
+    };
+
+    await inft.mint(owner.address, "0g://dataset/one", ethers.ZeroHash, metadata);
+    await inft.mint(recipient.address, "0g://dataset/two", ethers.ZeroHash, secondMetadata);
+
+    expect(await inft.ownerOf(1n)).to.equal(owner.address);
+    expect(await inft.ownerOf(2n)).to.equal(recipient.address);
+    expect(await inft.tokenURI(1n)).to.equal(metadata.metadataURI);
+    expect(await inft.tokenURI(2n)).to.equal(secondMetadata.metadataURI);
+
+    expectStoredMetadata(await inft.getAgentMetadata(1n), metadata);
+    expectStoredMetadata(await inft.getAgentMetadata(2n), secondMetadata);
+  });
+
+  it("rejects minting from a non-owner", async function () {
+    const { recipient, inft, metadata } = await deployFixture();
+
+    await expect(
+      inft.connect(recipient).mint(recipient.address, "0g://dataset/test", ethers.ZeroHash, metadata),
+    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
   it("allows the owner to mint and transfer with a valid proof", async function () {
     const { owner, recipient, inft, metadata } = await deployFixture();
 
-    await inft.mint(owner.address, "0g://dataset/original", ethers.ZeroHash, metadata);
+    await mintSampleToken(inft, owner.address, metadata);
 
     const sealedKey = ethers.toUtf8Bytes("sealed-key");
     const newHash = ethers.keccak256(ethers.toUtf8Bytes("new-hash"));
@@ -81,27 +150,56 @@ describe("INFT", function () {
   it("rejects transfer when the proof is empty", async function () {
     const { owner, recipient, inft, metadata } = await deployFixture();
 
-    await inft.mint(owner.address, "0g://dataset/original", ethers.ZeroHash, metadata);
+    await mintSampleToken(inft, owner.address, metadata);
 
     await expect(
       inft.transfer(owner.address, recipient.address, 1n, ethers.toUtf8Bytes("sealed"), "0x"),
     ).to.be.revertedWith("Invalid proof");
   });
 
+  it("rejects transfer from a non-owner", async function () {
+    const { owner, recipient, stranger, inft, metadata } = await deployFixture();
+
+    await mintSampleToken(inft, owner.address, metadata);
+
+    const proof = ethers.concat([
+      ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes("proof"))),
+      ethers.getBytes(ethers.zeroPadValue("0x01", 32)),
+    ]);
+
+    await expect(
+      inft.connect(stranger).transfer(owner.address, recipient.address, 1n, ethers.toUtf8Bytes("sealed"), proof),
+    ).to.be.revertedWith("Not owner");
+  });
+
   it("lets the owner authorize usage", async function () {
     const { owner, recipient, inft, metadata } = await deployFixture();
 
-    await inft.mint(owner.address, "0g://dataset/original", ethers.ZeroHash, metadata);
+    await mintSampleToken(inft, owner.address, metadata);
 
     await expect(
       inft.authorizeUsage(1n, recipient.address, ethers.toUtf8Bytes("read-only")),
     ).to.emit(inft, "UsageAuthorized").withArgs(1n, recipient.address);
+
+    expect(await inft.getAuthorization(1n, recipient.address)).to.equal(
+      ethers.hexlify(ethers.toUtf8Bytes("read-only")),
+    );
+  });
+
+  it("rejects usage authorization from a non-owner", async function () {
+    const { owner, recipient, stranger, inft, metadata } = await deployFixture();
+
+    await mintSampleToken(inft, owner.address, metadata);
+
+    await expect(
+      inft.connect(stranger).authorizeUsage(1n, recipient.address, ethers.toUtf8Bytes("read-only")),
+    ).to.be.revertedWith("Not owner");
   });
 
   it("lets a new user pay for usage access", async function () {
     const { owner, recipient, inft, metadata } = await deployFixture();
 
-    await inft.mint(owner.address, "0g://dataset/original", ethers.ZeroHash, metadata);
+    await mintSampleToken(inft, owner.address, metadata);
 
     const fee = await inft.USAGE_FEE();
     const ownerBalanceBefore = await ethers.provider.getBalance(owner.address);
@@ -121,12 +219,20 @@ describe("INFT", function () {
   it("rejects usage purchases with the wrong fee", async function () {
     const { owner, recipient, inft, metadata } = await deployFixture();
 
-    await inft.mint(owner.address, "0g://dataset/original", ethers.ZeroHash, metadata);
+    await mintSampleToken(inft, owner.address, metadata);
 
     await expect(
       inft.connect(recipient).purchaseUsage(1n, ethers.toUtf8Bytes("paid"), {
         value: 1n,
       }),
     ).to.be.revertedWith("Incorrect usage fee");
+  });
+
+  it("returns an empty authorization when no permissions were set", async function () {
+    const { owner, inft, metadata } = await deployFixture();
+
+    await mintSampleToken(inft, owner.address, metadata);
+
+    expect(await inft.getAuthorization(1n, owner.address)).to.equal("0x");
   });
 });

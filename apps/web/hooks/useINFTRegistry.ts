@@ -103,6 +103,12 @@ export function useINFTToken(tokenId: bigint | undefined) {
     agentMetadata,
     metadataHash,
     oracle,
+    usageFee: useReadContract({
+      address: CONTRACT_ADDRESSES.INFTRegistry,
+      abi: INFTRegistryABI,
+      functionName: "USAGE_FEE",
+      query: { enabled },
+    }),
     tokenURI: useReadContract({
       address: CONTRACT_ADDRESSES.INFTRegistry,
       abi: INFTRegistryABI,
@@ -208,4 +214,29 @@ export function useMintINFT() {
   }
 
   return { mint, txHash, isPending, isConfirming, isSuccess, error };
+}
+
+export function usePurchaseUsage() {
+  const { writeContractAsync, data: txHash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  async function purchaseUsage(
+    tokenId: bigint,
+    permissions: `0x${string}`,
+    value: bigint,
+  ) {
+    if (CONTRACT_ADDRESSES.INFTRegistry === ZERO_ADDRESS) {
+      throw new Error("INFT registry address is not configured. Set NEXT_PUBLIC_INFT_REGISTRY_ADDRESS.");
+    }
+
+    return writeContractAsync({
+      address: CONTRACT_ADDRESSES.INFTRegistry,
+      abi: INFTRegistryABI,
+      functionName: "purchaseUsage",
+      args: [tokenId, permissions],
+      value,
+    });
+  }
+
+  return { purchaseUsage, txHash, isPending, isConfirming, isSuccess, error };
 }

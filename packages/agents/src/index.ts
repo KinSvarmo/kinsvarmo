@@ -35,3 +35,4 @@ export type CriticModule = AgentModule<AnalysisOutput, CriticOutput>;
 export type ReporterModule = AgentModule<CriticOutput, ReportOutput>;
 
 export * from "./phytochemistry/demo-analysis";
+export * from "./phytochemistry/dl50";

@@ -30,7 +30,7 @@ const MODULES: Array<{
   {
     key: "analyzerStatus",
     label: "Analyzer",
-    description: "Runs the deterministic phytochemistry analysis path."
+    description: "Estimates LD50 from dose-response CSV data."
   },
   {
     key: "criticStatus",
@@ -266,6 +266,14 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
             {result ? (
               <div>
                 <p style={{ color: "var(--text)", lineHeight: 1.5, marginBottom: 12 }}>{result.summary}</p>
+                {typeof result.structuredJson.estimatedDl50 === "number" && (
+                  <div className="glass" style={{ padding: 16, marginBottom: 16, background: "var(--bg-raised)" }}>
+                    <div className="job-detail-list">
+                      <Detail label="Estimated LD50" value={formatNumber(result.structuredJson.estimatedDl50 as number)} monospace />
+                      <Detail label="Method" value={String(result.structuredJson.method ?? "unknown")} />
+                    </div>
+                  </div>
+                )}
                 <div className="job-detail-list" style={{ marginBottom: 16 }}>
                   <Detail label="Confidence" value={`${Math.round(result.confidence * 100)}%`} />
                   <Detail label="Provenance" value={result.provenanceId} monospace />
@@ -308,6 +316,10 @@ function formatDate(timestamp: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(timestamp));
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function statusBadge(status: AnalysisJob["status"]): string {

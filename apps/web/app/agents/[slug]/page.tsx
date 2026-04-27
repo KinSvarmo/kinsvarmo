@@ -5,13 +5,12 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { useAccount, useConnect, useBalance } from "wagmi";
 import { seededAgents, type AnalysisJob, type AgentListing } from "@kingsvarmo/shared";
-import { useCreateJob } from "@/hooks/useAnalysisEscrow";
-import { useINFTToken, useTokenMetadata } from "@/hooks/useINFTRegistry";
+import { useINFTToken, useTokenMetadata, usePurchaseUsage } from "@/hooks/useINFTRegistry";
 import { fetchJson } from "@/lib/api";
 import { ogTestnet } from "@/lib/chain";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { injectedConnector } from "@/lib/wagmi";
-import { formatUnits, parseEther } from "viem";
+import { formatEther, formatUnits, parseEther, stringToHex } from "viem";
 
 type Step = "upload" | "validate" | "review" | "confirm";
 
@@ -148,12 +147,16 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const [apiJobId, setApiJobId] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmittingJob, setIsSubmittingJob] = useState(false);
+  const [pendingAnalysisPayload, setPendingAnalysisPayload] = useState<{
+    csvText: string;
+    filename: string;
+  } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const { data: balance } = useBalance({ address, chainId: ogTestnet.id });
-  const { createJob, isPending, isConfirming, isSuccess, txHash, error } = useCreateJob();
+  const { purchaseUsage, txHash, isPending, isConfirming, isSuccess, error } = usePurchaseUsage();
 
   // File validation
   const validateFile = useCallback((f: File) => {
@@ -205,8 +208,9 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   };
 
   const allPass = checks.every((c) => c.status === "pass");
+  const usageFeeValue = token.usageFee.data ? (token.usageFee.data as bigint) : parseEther("0.01");
   const hasSufficientBalance = balance
-    ? balance.value >= parseEther(agent.priceIn0G)
+    ? balance.value >= usageFeeValue
     : false;
 
   // Compute cost breakdown
@@ -219,40 +223,86 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
     if (!isConnected) { connect({ connector: injectedConnector }); return; }
 
     setApiError(null);
+    if (!tokenIdBigInt) {
+      setApiError("This agent does not have an onchain token ID yet.");
+      return;
+    }
+    if (!file) {
+      setApiError("Please upload a CSV dataset first.");
+      return;
+    }
+
     setIsSubmittingJob(true);
-
     try {
-      const { job } = await fetchJson<{ job: AnalysisJob }>("/api/jobs", {
-        method: "POST",
-        body: JSON.stringify({
-          agentId: agent.id,
-          userWallet: address ?? "0x0000000000000000000000000000000000000001",
-          filename: file?.name ?? "alkaloid-sample.csv",
-          uploadReference: datasetRef,
-          inputMetadata: {
-            source: "web-run-page",
-            totalOG,
-            storageFee,
-            protocolFee,
-            fileSizeBytes: file?.size ?? 0
-          }
-        })
+      const csvText = await file.text();
+      setPendingAnalysisPayload({
+        csvText,
+        filename: file.name,
       });
-
-      await fetchJson<{ job: AnalysisJob | null }>(`/api/jobs/${job.id}/start`, {
-        method: "POST"
-      });
-
-      setApiJobId(job.id);
-      setConfirmed(true);
-      // When contract is live, uncomment:
-      // createJob(BigInt(1), datasetRef, totalOG.toString());
+      const permissions = stringToHex(`dl50:${agent.id}:${datasetRef}`);
+      await purchaseUsage(tokenIdBigInt, permissions, usageFeeValue);
     } catch (caught) {
-      setApiError(caught instanceof Error ? caught.message : "Could not create the analysis job");
-    } finally {
       setIsSubmittingJob(false);
+      setPendingAnalysisPayload(null);
+      setApiError(caught instanceof Error ? caught.message : "Could not start the wallet transaction");
     }
   };
+
+  useEffect(() => {
+    if (!isSuccess || !pendingAnalysisPayload) {
+      return;
+    }
+
+    let cancelled = false;
+    const payload = pendingAnalysisPayload;
+
+    async function submitAnalysisJob() {
+      try {
+        const { job } = await fetchJson<{ job: AnalysisJob }>("/api/jobs", {
+          method: "POST",
+          body: JSON.stringify({
+            agentId: agent.id,
+            userWallet: address ?? "0x0000000000000000000000000000000000000001",
+            filename: payload.filename,
+            uploadReference: datasetRef,
+            inputMetadata: {
+              source: "web-run-page",
+              analysisType: "dl50",
+              csvText: payload.csvText,
+              totalOG,
+              storageFee,
+              protocolFee,
+              fileSizeBytes: file?.size ?? 0
+            }
+          })
+        });
+
+        await fetchJson<{ job: AnalysisJob | null }>(`/api/jobs/${job.id}/start`, {
+          method: "POST"
+        });
+
+        if (!cancelled) {
+          setApiJobId(job.id);
+          setConfirmed(true);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setApiError(caught instanceof Error ? caught.message : "Could not create the analysis job");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSubmittingJob(false);
+          setPendingAnalysisPayload(null);
+        }
+      }
+    }
+
+    void submitAnalysisJob();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSuccess, pendingAnalysisPayload, address, agent.id, datasetRef, totalOG, storageFee, protocolFee, file?.size]);
 
   // Success redirect (once contracts live + real txHash)
   useEffect(() => {
@@ -272,6 +322,19 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
             Results will appear once the workflow completes.
           </p>
           <div className="tx-panel" style={{ marginBottom: 24, textAlign: "left" }}>
+            {txHash && (
+              <div style={{ marginBottom: 6 }}>
+                <span style={{ color: "var(--text-3)" }}>Wallet tx:</span>{" "}
+                <a
+                  href={`https://chainscan-galileo.0g.ai/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--teal)" }}
+                >
+                  {txHash.slice(0, 20)}…
+                </a>
+              </div>
+            )}
             <div style={{ marginBottom: 6 }}><span style={{ color: "var(--text-3)" }}>Dataset ref:</span> {datasetRef}</div>
             <div><span style={{ color: "var(--text-3)" }}>Agent:</span> {agent.name}</div>
             {apiJobId && (
@@ -522,13 +585,19 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                     <div className="cost-row">
                       <span className="label">Contract</span>
                       <span className="value font-mono" style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
-                        AnalysisEscrow (deploy pending)
+                        {contractAddress}
+                      </span>
+                    </div>
+                    <div className="cost-row">
+                      <span className="label">iNFT usage fee</span>
+                      <span className="value" style={{ color: "var(--teal)", fontSize: "1.05rem" }}>
+                        {formatEther(usageFeeValue)} OG
                       </span>
                     </div>
                   </div>
 
                   <div className="callout callout-info" style={{ marginBottom: 20 }}>
-                    Smart contract not yet deployed to 0G testnet. Clicking below simulates the flow — real on-chain execution will be enabled after deployment.
+                    This sends a usage purchase to the iNFT, then starts the LD50 workflow once the transaction confirms.
                   </div>
 
                   {error && (

@@ -68,12 +68,6 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
       });
     }
 
-    if (!seededAgents.some((agent) => agent.id === parsed.data.agentId)) {
-      return reply.code(404).send({
-        error: "agent_not_found"
-      });
-    }
-
     const jobInput: JobCreateInput = {
       agentId: parsed.data.agentId,
       userWallet: parsed.data.userWallet,
