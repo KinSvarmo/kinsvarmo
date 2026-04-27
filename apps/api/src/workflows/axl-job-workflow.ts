@@ -1,4 +1,5 @@
 import type { AxlClient } from "@kingsvarmo/axl-client";
+import type { KeeperHubClient } from "@kingsvarmo/keeperhub";
 import type { AnalysisJob, AnalysisResult, AxlMessage } from "@kingsvarmo/shared";
 import { seededAgents } from "@kingsvarmo/shared";
 import {
@@ -18,16 +19,29 @@ const activeWorkflows = new Set<string>();
 export async function startAxlJobWorkflow(input: {
   job: AnalysisJob;
   axlClient: AxlClient;
+  keeperHubClient: KeeperHubClient;
   store: JobStore;
 }): Promise<void> {
-  const { job, axlClient, store } = input;
+  const { job, axlClient, keeperHubClient, store } = input;
 
   if (activeWorkflows.has(job.id)) {
     return;
   }
 
+  const keeperHubRun = await keeperHubClient.createRun({
+    jobId: job.id,
+    metadata: {
+      agentId: job.agentId,
+      filename: job.filename,
+      uploadReference: job.uploadReference ?? null
+    }
+  });
+
   activeWorkflows.add(job.id);
   store.updateJob(job.id, createInitialStartPatch());
+  store.updateJob(job.id, {
+    keeperhubRunId: keeperHubRun.id
+  });
 
   const message = createJobCreatedMessage(job);
   store.appendMessage(message);

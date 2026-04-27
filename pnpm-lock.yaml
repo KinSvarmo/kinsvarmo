@@ -14,6 +14,9 @@ importers:
       '@kingsvarmo/axl-client':
         specifier: workspace:*
         version: link:packages/axl-client
+      '@kingsvarmo/keeperhub':
+        specifier: workspace:*
+        version: link:packages/keeperhub
       '@kingsvarmo/shared':
         specifier: workspace:*
         version: link:packages/shared
@@ -32,6 +35,9 @@ importers:
       '@kingsvarmo/axl-client':
         specifier: workspace:*
         version: link:../../packages/axl-client
+      '@kingsvarmo/keeperhub':
+        specifier: workspace:*
+        version: link:../../packages/keeperhub
       '@kingsvarmo/shared':
         specifier: workspace:*
         version: link:../../packages/shared

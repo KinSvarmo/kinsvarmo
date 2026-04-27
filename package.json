@@ -18,6 +18,8 @@
     "axl:real:test": "bash -lc 'set -a; source /tmp/axl/kingsvarmo-configs/kingsvarmo-real-axl.env; set +a; KINSVARMO_AXL_LIVE_TESTS=1 KINSVARMO_AXL_LIVE_SEND_TESTS=1 pnpm test:axl'",
     "axl:real:workers": "bash -lc 'set -a; source /tmp/axl/kingsvarmo-configs/kingsvarmo-real-axl.env; set +a; pnpm axl:workers'",
     "axl:real:demo": "bash -lc 'set -a; source /tmp/axl/kingsvarmo-configs/kingsvarmo-real-axl.env; set +a; pnpm axl:demo'",
+    "keeperhub:create-webhook": "tsx scripts/keeperhub/create-webhook-workflow.ts",
+    "keeperhub:test": "tsx scripts/keeperhub/test-workflow.ts",
     "build": "pnpm -r build",
     "test": "node --import tsx --test scripts/tests/**/*.test.ts",
     "test:axl": "node --import tsx --test scripts/tests/axl/**/*.test.ts",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@kingsvarmo/agents": "workspace:*",
     "@kingsvarmo/axl-client": "workspace:*",
+    "@kingsvarmo/keeperhub": "workspace:*",
     "@kingsvarmo/shared": "workspace:*",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4"

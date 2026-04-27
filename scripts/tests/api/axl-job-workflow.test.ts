@@ -9,6 +9,13 @@ import type {
   AxlSendReceipt,
   AxlTopology
 } from "@kingsvarmo/axl-client";
+import type {
+  CreateKeeperHubRunInput,
+  KeeperHubClient,
+  KeeperHubClientHealth,
+  KeeperHubLogEntry,
+  KeeperHubRun
+} from "@kingsvarmo/keeperhub";
 import type { AxlMessage } from "@kingsvarmo/shared";
 import { buildApiServer } from "../../../apps/api/src/server";
 
@@ -33,8 +40,10 @@ test("API job workflow is driven by AXL messages", async () => {
       provenanceId: "prov_job_api_workflow"
     })
   ]);
+  const keeperHubClient = createScriptedKeeperHubClient();
   const server = await buildApiServer({
-    axlClient
+    axlClient,
+    keeperHubClient
   });
 
   try {
@@ -66,6 +75,7 @@ test("API job workflow is driven by AXL messages", async () => {
       url: `/api/jobs/${jobId}/start`
     });
     assert.equal(startResponse.statusCode, 200);
+    assert.deepEqual(keeperHubClient.createdRuns.map((run) => run.jobId), [jobId]);
     assert.equal(axlClient.sentMessages[0]?.type, "job.created");
     assert.equal(axlClient.sentMessages[0]?.receiver, "planner");
 
@@ -76,6 +86,7 @@ test("API job workflow is driven by AXL messages", async () => {
     assert.equal(completedJob.criticStatus, "completed");
     assert.equal(completedJob.reporterStatus, "completed");
     assert.equal(completedJob.resultId, `result_${jobId}`);
+    assert.equal(completedJob.keeperhubRunId, `kh_run_${jobId}`);
 
     const messagesResponse = await server.inject({
       method: "GET",
@@ -101,6 +112,26 @@ test("API job workflow is driven by AXL messages", async () => {
     assert.equal(
       resultResponse.json<{ result: { provenanceId: string } }>().result.provenanceId,
       "prov_job_api_workflow"
+    );
+
+    const keeperHubResponse = await server.inject({
+      method: "GET",
+      url: `/api/jobs/${jobId}/keeperhub`
+    });
+    assert.equal(keeperHubResponse.statusCode, 200);
+    assert.equal(
+      keeperHubResponse.json<{ run: KeeperHubRun }>().run.id,
+      `kh_run_${jobId}`
+    );
+
+    const retryResponse = await server.inject({
+      method: "POST",
+      url: `/api/jobs/${jobId}/keeperhub/retry`
+    });
+    assert.equal(retryResponse.statusCode, 200);
+    assert.equal(
+      retryResponse.json<{ run: KeeperHubRun }>().run.state,
+      "retrying"
     );
   } finally {
     await server.close();
@@ -181,6 +212,76 @@ function createScriptedAxlClient(initialQueue: AxlMessage[]): ScriptedAxlClient 
   };
 }
 
+interface ScriptedKeeperHubClient extends KeeperHubClient {
+  createdRuns: KeeperHubRun[];
+}
+
+function createScriptedKeeperHubClient(): ScriptedKeeperHubClient {
+  const createdRuns: KeeperHubRun[] = [];
+  const runs = new Map<string, KeeperHubRun>();
+
+  return {
+    createdRuns,
+    async createRun(input: CreateKeeperHubRunInput): Promise<KeeperHubRun> {
+      const now = new Date().toISOString();
+      const run: KeeperHubRun = {
+        id: `kh_run_${input.jobId}`,
+        jobId: input.jobId,
+        state: "running",
+        logs: [createKeeperHubLog(`kh_run_${input.jobId}`, "Workflow accepted")],
+        createdAt: now,
+        updatedAt: now
+      };
+
+      createdRuns.push(run);
+      runs.set(run.id, run);
+      return run;
+    },
+    async getRun(runId: string): Promise<KeeperHubRun> {
+      const run = runs.get(runId);
+
+      if (!run) {
+        throw new Error(`KeeperHub run not found: ${runId}`);
+      }
+
+      return run;
+    },
+    async retryRun(runId: string): Promise<KeeperHubRun> {
+      const run = await this.getRun(runId);
+      const updated: KeeperHubRun = {
+        ...run,
+        state: "retrying",
+        logs: [...run.logs, createKeeperHubLog(runId, "Retry requested")],
+        updatedAt: new Date().toISOString()
+      };
+
+      runs.set(runId, updated);
+      return updated;
+    },
+    async getRunLogs(runId: string): Promise<KeeperHubLogEntry[]> {
+      return (await this.getRun(runId)).logs;
+    },
+    async health(): Promise<KeeperHubClientHealth> {
+      return {
+        configured: true,
+        mode: "memory",
+        healthy: true
+      };
+    }
+  };
+}
+
+function createKeeperHubLog(runId: string, message: string): KeeperHubLogEntry {
+  return {
+    id: `${runId}_${message.replaceAll(" ", "_").toLowerCase()}`,
+    runId,
+    timestamp: new Date().toISOString(),
+    level: "info",
+    message,
+    metadata: {}
+  };
+}
+
 function createAxlMessage(
   type: AxlMessage["type"],
   sender: AxlMessage["sender"],
@@ -217,6 +318,7 @@ async function waitForCompletedJob(
         criticStatus: string;
         reporterStatus: string;
         resultId?: string;
+        keeperhubRunId?: string;
       };
     }>();
 

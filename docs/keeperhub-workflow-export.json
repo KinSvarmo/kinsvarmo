@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "exportedAt": "2026-04-27T21:45:00.000Z",
+  "workflow": {
+    "name": "KinSvarmo Analysis Execution",
+    "description": "Tracks KinSvarmo analysis job execution, validates job metadata, sends an execution callback, and keeps KeeperHub run logs visible for the job status page."
+  },
+  "nodes": [
+    {
+      "id": "trigger-webhook",
+      "type": "trigger",
+      "position": {
+        "x": -120,
+        "y": 0
+      },
+      "data": {
+        "type": "trigger",
+        "label": "KinSvarmo Job Started",
+        "description": "Receives a KeeperHub run request from the KinSvarmo backend when a user starts an analysis job.",
+        "status": "idle",
+        "config": {
+          "triggerType": "Manual"
+        }
+      }
+    },
+    {
+      "id": "validate-job-payload",
+      "type": "action",
+      "position": {
+        "x": 170,
+        "y": 0
+      },
+      "data": {
+        "type": "action",
+        "label": "Validate Job Payload",
+        "description": "Checks that jobId and agentId are present before the workflow continues.",
+        "status": "idle",
+        "config": {
+          "actionType": "Run Code",
+          "timeout": 10,
+          "code": "const input = {{KinSvarmo Job Started}};\nconst payload = input?.payload ?? input ?? {};\nif (!payload.jobId && !payload.metadata?.jobId) throw new Error('Missing jobId');\nif (!payload.agentId && !payload.metadata?.agentId) throw new Error('Missing agentId');\nreturn {\n  ok: true,\n  jobId: payload.jobId ?? payload.metadata.jobId,\n  agentId: payload.agentId ?? payload.metadata.agentId,\n  filename: payload.filename ?? payload.metadata?.filename ?? null,\n  uploadReference: payload.uploadReference ?? payload.metadata?.uploadReference ?? null\n};"
+        }
+      }
+    },
+    {
+      "id": "create-keeperhub-audit-log",
+      "type": "action",
+      "position": {
+        "x": 470,
+        "y": 0
+      },
+      "data": {
+        "type": "action",
+        "label": "Create KeeperHub Audit Log",
+        "description": "Emits a log entry proving KeeperHub accepted and validated the KinSvarmo job.",
+        "status": "idle",
+        "config": {
+          "actionType": "Run Code",
+          "timeout": 10,
+          "code": "const job = {{Validate Job Payload.result}};\nconsole.log('KeeperHub accepted KinSvarmo job', job);\nreturn {\n  event: 'keeperhub.job.accepted',\n  jobId: job.jobId,\n  agentId: job.agentId,\n  state: 'running'\n};"
+        }
+      }
+    },
+    {
+      "id": "notify-kingsvarmo-callback",
+      "type": "action",
+      "position": {
+        "x": 770,
+        "y": 0
+      },
+      "data": {
+        "type": "action",
+        "label": "Notify KinSvarmo Callback",
+        "description": "Sends a webhook to KinSvarmo so the backend can record KeeperHub execution progress without re-starting the job.",
+        "status": "idle",
+        "config": {
+          "actionType": "Send Webhook",
+          "url": "https://YOUR_PUBLIC_KINSVARMO_API.example.com/api/keeperhub/callback",
+          "payload": {
+            "source": "keeperhub",
+            "event": "keeperhub.execution.running",
+            "jobId": "{{Validate Job Payload.result.jobId}}",
+            "agentId": "{{Validate Job Payload.result.agentId}}",
+            "filename": "{{Validate Job Payload.result.filename}}"
+          }
+        }
+      }
+    },
+    {
+      "id": "finalize-keeperhub-log",
+      "type": "action",
+      "position": {
+        "x": 1070,
+        "y": 0
+      },
+      "data": {
+        "type": "action",
+        "label": "Finalize KeeperHub Log",
+        "description": "Returns a final KeeperHub-visible execution summary for the KinSvarmo job status page.",
+        "status": "idle",
+        "config": {
+          "actionType": "Run Code",
+          "timeout": 10,
+          "code": "const job = {{Validate Job Payload.result}};\nconsole.log('KeeperHub workflow completed for KinSvarmo job', job.jobId);\nreturn {\n  event: 'keeperhub.execution.completed',\n  jobId: job.jobId,\n  agentId: job.agentId,\n  state: 'completed'\n};"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-trigger-validate",
+      "type": "animated",
+      "source": "trigger-webhook",
+      "target": "validate-job-payload"
+    },
+    {
+      "id": "edge-validate-audit",
+      "type": "animated",
+      "source": "validate-job-payload",
+      "target": "create-keeperhub-audit-log"
+    },
+    {
+      "id": "edge-audit-callback",
+      "type": "animated",
+      "source": "create-keeperhub-audit-log",
+      "target": "notify-kingsvarmo-callback"
+    },
+    {
+      "id": "edge-callback-finalize",
+      "type": "animated",
+      "source": "notify-kingsvarmo-callback",
+      "target": "finalize-keeperhub-log"
+    }
+  ],
+  "integrationBindings": []
+}

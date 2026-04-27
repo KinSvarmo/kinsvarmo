@@ -2,8 +2,10 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { z } from "zod";
 import type { AxlClient } from "@kingsvarmo/axl-client";
+import type { KeeperHubClient } from "@kingsvarmo/keeperhub";
 import { seededAgents, type JobCreateInput } from "@kingsvarmo/shared";
 import { createBackendAxlClient } from "./integrations/axl";
+import { createBackendKeeperHubClient } from "./integrations/keeperhub";
 import { createInMemoryJobStore, type JobStore } from "./state/store";
 import { startAxlJobWorkflow } from "./workflows/axl-job-workflow";
 
@@ -17,6 +19,7 @@ const createJobSchema = z.object({
 
 export interface BuildApiServerOptions {
   axlClient?: AxlClient;
+  keeperHubClient?: KeeperHubClient;
   store?: JobStore;
 }
 
@@ -25,6 +28,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     logger: true
   });
   const axlClient = options.axlClient ?? createBackendAxlClient();
+  const keeperHubClient = options.keeperHubClient ?? createBackendKeeperHubClient();
   const store = options.store ?? createInMemoryJobStore();
 
   await server.register(cors, {
@@ -34,7 +38,8 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
   server.get("/health", async () => ({
     ok: true,
     service: "kingsvarmo-api",
-    axl: await axlClient.health()
+    axl: await axlClient.health(),
+    keeperHub: await keeperHubClient.health()
   }));
 
   server.get("/api/agents", async () => ({
@@ -97,6 +102,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     await startAxlJobWorkflow({
       job,
       axlClient,
+      keeperHubClient,
       store
     });
 
@@ -146,6 +152,56 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
 
     return {
       result
+    };
+  });
+
+  server.get("/api/jobs/:id/keeperhub", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const job = store.getJob(id);
+
+    if (!job) {
+      return reply.code(404).send({
+        error: "job_not_found"
+      });
+    }
+
+    if (!job.keeperhubRunId) {
+      return reply.code(404).send({
+        error: "keeperhub_run_not_found"
+      });
+    }
+
+    const run = await keeperHubClient.getRun(job.keeperhubRunId);
+    const logs = await keeperHubClient.getRunLogs(job.keeperhubRunId);
+
+    return {
+      run: {
+        ...run,
+        logs
+      }
+    };
+  });
+
+  server.post("/api/jobs/:id/keeperhub/retry", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const job = store.getJob(id);
+
+    if (!job) {
+      return reply.code(404).send({
+        error: "job_not_found"
+      });
+    }
+
+    if (!job.keeperhubRunId) {
+      return reply.code(404).send({
+        error: "keeperhub_run_not_found"
+      });
+    }
+
+    const run = await keeperHubClient.retryRun(job.keeperhubRunId);
+
+    return {
+      run
     };
   });
 
