@@ -298,6 +298,19 @@ code, pre { font-family: "JetBrains Mono", monospace; }
   font-size: 0.84rem;
 }
 
+.axl-audit-copy,
+.axl-route-label {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 0.7rem;
+  line-height: 1.25;
+}
+
+.axl-route-label {
+  color: var(--text-2);
+}
+
 .axl-log-row:first-child {
   border-top: none;
 }
@@ -389,6 +402,19 @@ code, pre { font-family: "JetBrains Mono", monospace; }
 .keeperhub-log-row p {
   color: var(--text-2);
   overflow-wrap: anywhere;
+}
+
+.result-json {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  max-height: 520px;
+  overflow: auto;
+  padding: 16px;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 920px) {

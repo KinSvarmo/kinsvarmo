@@ -87,16 +87,24 @@ async function main(): Promise<void> {
       description:
         "Receives a KinSvarmo job payload, validates it, records KeeperHub audit logs, and prepares the backend AXL execution path.",
       visibility: "private",
+      enabled: true,
       nodes,
       edges
     }
   });
+  const enabled = await requestJson<Workflow>({
+    method: "PATCH",
+    url: `${baseUrl}/api/workflows/${created.id}`,
+    body: {
+      enabled: true
+    }
+  });
 
-  updateDotEnv(created.id);
+  updateDotEnv(enabled.id);
 
   console.log("KeeperHub workflow created and .env updated.");
-  console.log(`workflowId: ${created.id}`);
-  console.log(`webhook: ${baseUrl}/api/workflows/${created.id}/webhook`);
+  console.log(`workflowId: ${enabled.id}`);
+  console.log(`webhook: ${baseUrl}/api/workflows/${enabled.id}/webhook`);
   console.log("\nNext:");
   console.log("pnpm keeperhub:test");
 }

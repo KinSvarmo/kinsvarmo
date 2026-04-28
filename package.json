@@ -20,6 +20,8 @@
     "axl:real:demo": "bash -lc 'set -a; source /tmp/axl/kingsvarmo-configs/kingsvarmo-real-axl.env; set +a; pnpm axl:demo'",
     "keeperhub:create-webhook": "tsx scripts/keeperhub/create-webhook-workflow.ts",
     "keeperhub:test": "tsx scripts/keeperhub/test-workflow.ts",
+    "demo:local": "tsx scripts/demo/start-local-demo.ts",
+    "demo:check": "tsx scripts/demo/check-local-demo.ts",
     "build": "pnpm -r build",
     "test": "node --import tsx --test scripts/tests/**/*.test.ts",
     "test:axl": "node --import tsx --test scripts/tests/axl/**/*.test.ts",

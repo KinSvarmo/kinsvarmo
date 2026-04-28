@@ -99,12 +99,30 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
       });
     }
 
-    await startAxlJobWorkflow({
-      job,
-      axlClient,
-      keeperHubClient,
-      store
-    });
+    try {
+      await startAxlJobWorkflow({
+        job,
+        axlClient,
+        keeperHubClient,
+        store
+      });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Workflow start failed";
+      const isKeeperHubError = message.toLowerCase().includes("keeperhub");
+
+      store.updateJob(id, {
+        status: "failed",
+        plannerStatus: "failed"
+      });
+
+      return reply.code(isKeeperHubError ? 502 : 500).send({
+        error: isKeeperHubError ? "keeperhub_workflow_unavailable" : "workflow_start_failed",
+        message,
+        hint: isKeeperHubError
+          ? "Check that KEEPERHUB_API_KEY, KEEPERHUB_WEBHOOK_KEY, and KEEPERHUB_WORKFLOW_ID are current, and that the KeeperHub workflow is enabled. Run pnpm keeperhub:test before retrying from the UI."
+          : "Check the API logs, AXL node configuration, and worker processes before retrying."
+      });
+    }
 
     return {
       job: store.getJob(id)
@@ -155,6 +173,21 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     };
   });
 
+  server.get("/api/results/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = store.getResult(id);
+
+    if (!result) {
+      return reply.code(404).send({
+        error: "result_not_found"
+      });
+    }
+
+    return {
+      result
+    };
+  });
+
   server.get("/api/jobs/:id/keeperhub", async (request, reply) => {
     const { id } = request.params as { id: string };
     const job = store.getJob(id);
@@ -171,8 +204,19 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
       });
     }
 
-    const run = await keeperHubClient.getRun(job.keeperhubRunId);
-    const logs = await keeperHubClient.getRunLogs(job.keeperhubRunId);
+    let run;
+    let logs;
+
+    try {
+      run = await keeperHubClient.getRun(job.keeperhubRunId);
+      logs = await keeperHubClient.getRunLogs(job.keeperhubRunId);
+    } catch (caught) {
+      return reply.code(502).send({
+        error: "keeperhub_status_unavailable",
+        message: caught instanceof Error ? caught.message : "Unable to fetch KeeperHub status",
+        hint: "Run pnpm keeperhub:test to verify the configured KeeperHub workflow and keys."
+      });
+    }
 
     return {
       run: {
@@ -198,7 +242,17 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
       });
     }
 
-    const run = await keeperHubClient.retryRun(job.keeperhubRunId);
+    let run;
+
+    try {
+      run = await keeperHubClient.retryRun(job.keeperhubRunId);
+    } catch (caught) {
+      return reply.code(502).send({
+        error: "keeperhub_retry_failed",
+        message: caught instanceof Error ? caught.message : "Unable to retry KeeperHub run",
+        hint: "Check the KeeperHub execution in the KeeperHub app, then run pnpm keeperhub:test."
+      });
+    }
 
     return {
       run

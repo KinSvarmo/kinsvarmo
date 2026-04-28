@@ -25,6 +25,17 @@ const STEP_LABELS: Record<Step, string> = {
 
 const ALLOWED_FORMATS = ["csv", "json", "tsv", "txt"];
 const MAX_SIZE_MB = 50;
+const EXECUTABLE_DEMO_AGENT_ID = "agent_alkaloid_predictor_v2";
+
+const DOMAIN_EMOJI: Record<string, string> = {
+  phytochemistry: "🌿",
+  toxicology: "⚠️",
+  genomics: "🧬",
+  materials: "⚗️",
+  "research-ops": "📋",
+  onchain: "◆",
+  default: "🤖",
+};
 
 type FileCheck = {
   label: string;
@@ -126,6 +137,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
     ...(resolvedStorageRef !== "—" ? { storageReference: resolvedStorageRef } : {}),
   };
   const agent = seededAgent ?? fallbackAgent;
+  const isExecutableDemoAgent = agent.id === EXECUTABLE_DEMO_AGENT_ID;
   const displayName = resolvedName;
   const displayCreator = resolvedCreatorName;
   const displayDescription = resolvedDescription;
@@ -222,7 +234,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const totalOG = +(basePrice + storageFee + protocolFee).toFixed(3);
 
   const handleDemoRun = async () => {
-    if (isStartingDemoRun) {
+    if (isStartingDemoRun || !isExecutableDemoAgent) {
       return;
     }
 
@@ -407,7 +419,9 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
         <div>
           {/* Agent header */}
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 32 }}>
-            <div className="agent-avatar" style={{ fontSize: "2rem", width: 64, height: 64 }}>🌿</div>
+            <div className="agent-avatar" style={{ fontSize: "2rem", width: 64, height: 64 }}>
+              {DOMAIN_EMOJI[agent.domain] ?? DOMAIN_EMOJI.default}
+            </div>
             <div>
             <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <h1 style={{ fontSize: "1.6rem" }}>{displayName}</h1>
@@ -432,7 +446,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
               <div className="callout callout-info" style={{ marginTop: 12 }}>
                 <strong>Preview output:</strong> {displayPreview}
               </div>
-              {seededAgent && (
+              {isExecutableDemoAgent && (
                 <div className="glass" style={{ marginTop: 16, padding: 18, background: "var(--bg-raised)" }}>
                   <p className="eyebrow" style={{ marginBottom: 8 }}>AXL + KeeperHub test path</p>
                   <p style={{ color: "var(--text-2)", fontSize: "0.86rem", lineHeight: 1.6, marginBottom: 14 }}>
@@ -445,6 +459,11 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                   >
                     {isStartingDemoRun ? "Starting Demo Workflow..." : "Run Demo Analysis"}
                   </button>
+                </div>
+              )}
+              {seededAgent && !isExecutableDemoAgent && (
+                <div className="callout callout-info" style={{ marginTop: 16 }}>
+                  This is a seeded marketplace preview. The first end-to-end AXL + KeeperHub execution path is currently wired to Alkaloid Predictor v2.
                 </div>
               )}
               {apiError && (

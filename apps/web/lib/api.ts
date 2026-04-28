@@ -20,8 +20,16 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 
 async function readErrorDetail(response: Response): Promise<string | null> {
   try {
-    const body = (await response.json()) as { error?: unknown };
-    return typeof body.error === "string" ? body.error : null;
+    const body = (await response.json()) as {
+      error?: unknown;
+      message?: unknown;
+      hint?: unknown;
+    };
+    const parts = [body.error, body.message, body.hint].filter(
+      (part): part is string => typeof part === "string" && part.length > 0
+    );
+
+    return parts.length > 0 ? parts.join(" — ") : null;
   } catch {
     return null;
   }

@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { seededAgents } from "@kingsvarmo/shared";
 
+const EXECUTABLE_DEMO_AGENT_ID = "agent_alkaloid_predictor_v2";
+
 const DOMAIN_EMOJI: Record<string, string> = {
   phytochemistry: "🌿",
+  toxicology: "⚠️",
   genomics: "🧬",
   materials: "⚗️",
+  "research-ops": "📋",
   imaging: "🔬",
   default: "🤖",
 };
@@ -31,7 +35,7 @@ export default function AgentsPage() {
 
       {/* Filter bar (UI stub) */}
       <div style={{ display: "flex", gap: 8, marginBottom: 32, flexWrap: "wrap" }}>
-        {["All", "Phytochemistry", "Genomics", "Materials", "Imaging"].map((tag, i) => (
+        {["All", "Phytochemistry", "Toxicology", "Genomics", "Materials", "Research Ops"].map((tag, i) => (
           <button
             key={tag}
             className={`btn btn-sm ${i === 0 ? "btn-primary" : "btn-ghost"}`}
@@ -56,13 +60,18 @@ export default function AgentsPage() {
             <article className="agent-card">
               <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
                 <div className="agent-avatar" style={{ fontSize: "1.5rem" }}>
-                  {DOMAIN_EMOJI.phytochemistry}
+                  {DOMAIN_EMOJI[agent.domain] ?? DOMAIN_EMOJI.default}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
                     <span className="badge badge-teal" style={{ fontSize: "0.68rem" }}>
                       Published
                     </span>
+                    {agent.id !== EXECUTABLE_DEMO_AGENT_ID && (
+                      <span className="badge badge-blue" style={{ fontSize: "0.68rem" }}>
+                        Preview listing
+                      </span>
+                    )}
                     {agent.supportedFormats.map((f) => (
                       <span key={f} className="badge badge-muted" style={{ fontSize: "0.68rem" }}>
                         .{f}
@@ -115,31 +124,10 @@ export default function AgentsPage() {
               </div>
 
               <div className="btn btn-primary" style={{ textAlign: "center", width: "100%" }}>
-                Run Analysis →
+                View Agent →
               </div>
             </article>
           </Link>
-        ))}
-
-        {/* Coming soon placeholders */}
-        {[1, 2].map((i) => (
-          <div key={i} className="agent-card" style={{ opacity: 0.4, cursor: "default" }}>
-            <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-              <div className="agent-avatar">⚗️</div>
-              <div>
-                <span className="badge badge-muted" style={{ fontSize: "0.68rem", marginBottom: 4 }}>
-                  Coming soon
-                </span>
-                <div className="skeleton" style={{ width: 160, height: 16, marginTop: 6 }} />
-                <div className="skeleton" style={{ width: 100, height: 12, marginTop: 6 }} />
-              </div>
-            </div>
-            <div className="skeleton" style={{ height: 40 }} />
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div className="skeleton" style={{ width: 80, height: 14 }} />
-              <div className="skeleton" style={{ width: 60, height: 16 }} />
-            </div>
-          </div>
         ))}
       </div>
     </div>

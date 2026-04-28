@@ -43,6 +43,13 @@ type KeeperHubResponse = {
   run: KeeperHubRun;
 };
 
+type DisplayedAxlMessage = {
+  message: AxlMessage;
+  displayedReceiver: string;
+  route: string;
+  isAuditCopy: boolean;
+};
+
 const MODULES: Array<{
   key: "plannerStatus" | "analyzerStatus" | "criticStatus" | "reporterStatus";
   label: string;
@@ -157,6 +164,10 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
       ),
     [messages]
   );
+  const displayedMessages = useMemo(
+    () => orderedMessages.map((message) => toDisplayedAxlMessage(message)),
+    [orderedMessages]
+  );
 
   const latestMessage = orderedMessages.at(-1);
   const keeperHubTrace = getKeeperHubTrace(keeperHubRun?.raw);
@@ -257,10 +268,10 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
                 <p className="eyebrow" style={{ marginBottom: 8 }}>AXL Communication Log</p>
                 <h2 style={{ fontSize: "1.25rem" }}>Message history</h2>
               </div>
-              <span className="badge badge-teal">sender → receiver</span>
+              <span className="badge badge-teal">true route</span>
             </div>
 
-            {orderedMessages.length === 0 ? (
+            {displayedMessages.length === 0 ? (
               <div className="callout callout-info">
                 No AXL messages have been recorded yet. Start the job to see planner, analyzer, critic, and reporter traffic here.
               </div>
@@ -272,15 +283,21 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
                   <span>Receiver</span>
                   <span>Type</span>
                 </div>
-                {orderedMessages.map((message) => (
+                {displayedMessages.map(({ message, displayedReceiver, route, isAuditCopy }) => (
                   <article key={message.id} className="axl-log-row">
                     <span className="font-mono" style={{ color: "var(--text-3)" }}>
                       {formatTime(message.timestamp)}
                     </span>
                     <span>{message.sender}</span>
-                    <span>{message.receiver}</span>
+                    <span>
+                      <span>{displayedReceiver}</span>
+                      {isAuditCopy && (
+                        <small className="axl-audit-copy">observed by API</small>
+                      )}
+                    </span>
                     <span>
                       <span className="badge badge-muted">{message.type}</span>
+                      <small className="axl-route-label">{route}</small>
                     </span>
                   </article>
                 ))}
@@ -389,7 +406,10 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
                   <Detail label="Confidence" value={`${Math.round(result.confidence * 100)}%`} />
                   <Detail label="Provenance" value={result.provenanceId} monospace />
                 </div>
-                <a href={`${API_BASE_URL}/api/jobs/${jobId}/result`} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">Open Result JSON</a>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <Link href={`/results/${result.id}`} className="btn btn-primary btn-sm">Open Result Page</Link>
+                  <a href={`${API_BASE_URL}/api/jobs/${jobId}/result`} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">Open JSON</a>
+                </div>
               </div>
             ) : (
               <p style={{ color: "var(--text-2)", fontSize: "0.86rem", lineHeight: 1.6 }}>
@@ -431,6 +451,34 @@ function formatDate(timestamp: string): string {
 
 function formatNumber(value: number): string {
   return Number.isInteger(value) ? value.toString() : value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function toDisplayedAxlMessage(message: AxlMessage): DisplayedAxlMessage {
+  const originalReceiver = getOriginalReceiver(message);
+  const displayedReceiver = originalReceiver ?? message.receiver;
+  const isAuditCopy = originalReceiver !== null && message.receiver === "api";
+
+  return {
+    message,
+    displayedReceiver,
+    route: `${message.sender} → ${displayedReceiver}`,
+    isAuditCopy
+  };
+}
+
+function getOriginalReceiver(message: AxlMessage): string | null {
+  const { payload } = message;
+
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const audit = payload.audit;
+  const originalReceiver = payload.originalReceiver;
+
+  return audit === true && typeof originalReceiver === "string"
+    ? originalReceiver
+    : null;
 }
 
 function getKeeperHubTrace(raw: unknown): string[] {

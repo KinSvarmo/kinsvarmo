@@ -114,6 +114,16 @@ test("API job workflow is driven by AXL messages", async () => {
       "prov_job_api_workflow"
     );
 
+    const resultByIdResponse = await server.inject({
+      method: "GET",
+      url: `/api/results/result_${jobId}`
+    });
+    assert.equal(resultByIdResponse.statusCode, 200);
+    assert.equal(
+      resultByIdResponse.json<{ result: { jobId: string } }>().result.jobId,
+      jobId
+    );
+
     const keeperHubResponse = await server.inject({
       method: "GET",
       url: `/api/jobs/${jobId}/keeperhub`
@@ -133,6 +143,41 @@ test("API job workflow is driven by AXL messages", async () => {
       retryResponse.json<{ run: KeeperHubRun }>().run.state,
       "retrying"
     );
+  } finally {
+    await server.close();
+  }
+});
+
+test("API returns a friendly KeeperHub error when workflow start fails", async () => {
+  const server = await buildApiServer({
+    axlClient: createScriptedAxlClient([]),
+    keeperHubClient: createFailingKeeperHubClient()
+  });
+
+  try {
+    const createResponse = await server.inject({
+      method: "POST",
+      url: "/api/jobs",
+      payload: {
+        agentId: "agent_alkaloid_predictor_v2",
+        userWallet: "0x0000000000000000000000000000000000000001",
+        filename: "alkaloid-sample.csv"
+      }
+    });
+    const jobId = createResponse.json<{ job: { id: string } }>().job.id;
+
+    const startResponse = await server.inject({
+      method: "POST",
+      url: `/api/jobs/${jobId}/start`
+    });
+    assert.equal(startResponse.statusCode, 502);
+    assert.equal(startResponse.json<{ error: string }>().error, "keeperhub_workflow_unavailable");
+
+    const jobResponse = await server.inject({
+      method: "GET",
+      url: `/api/jobs/${jobId}`
+    });
+    assert.equal(jobResponse.json<{ job: { status: string } }>().job.status, "failed");
   } finally {
     await server.close();
   }
@@ -266,6 +311,30 @@ function createScriptedKeeperHubClient(): ScriptedKeeperHubClient {
         configured: true,
         mode: "memory",
         healthy: true
+      };
+    }
+  };
+}
+
+function createFailingKeeperHubClient(): KeeperHubClient {
+  return {
+    async createRun(): Promise<KeeperHubRun> {
+      throw new Error("KeeperHub POST /api/workflows/demo/webhook failed with 410: workflow disabled");
+    },
+    async getRun(): Promise<KeeperHubRun> {
+      throw new Error("KeeperHub run unavailable");
+    },
+    async retryRun(): Promise<KeeperHubRun> {
+      throw new Error("KeeperHub retry unavailable");
+    },
+    async getRunLogs(): Promise<KeeperHubLogEntry[]> {
+      throw new Error("KeeperHub logs unavailable");
+    },
+    async health(): Promise<KeeperHubClientHealth> {
+      return {
+        configured: true,
+        mode: "http",
+        healthy: false
       };
     }
   };

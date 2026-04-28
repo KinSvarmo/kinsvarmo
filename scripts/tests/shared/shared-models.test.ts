@@ -49,9 +49,22 @@ test("AXL message types cover the required MVP workflow", () => {
 });
 
 test("seeded demo agent is usable by marketplace, detail, and run flows", () => {
-  assert.equal(seededAgents.length, 1);
+  assert.ok(seededAgents.length >= 5);
 
-  const [agent] = seededAgents;
+  const slugs = new Set(seededAgents.map((agent) => agent.slug));
+  const ids = new Set(seededAgents.map((agent) => agent.id));
+  assert.equal(slugs.size, seededAgents.length);
+  assert.equal(ids.size, seededAgents.length);
+
+  for (const marketplaceAgent of seededAgents) {
+    assert.equal(marketplaceAgent.status, "published");
+    assert.match(marketplaceAgent.priceIn0G, /^\d+(\.\d+)?$/);
+    assert.ok(marketplaceAgent.runtimeEstimateSeconds > 0);
+    assert.match(marketplaceAgent.intelligenceReference ?? "", /^0g:\/\//);
+    assert.match(marketplaceAgent.storageReference ?? "", /^0g:\/\//);
+  }
+
+  const agent = seededAgents.find((candidate) => candidate.id === "agent_alkaloid_predictor_v2");
   assert.ok(agent);
   assert.equal(agent.name, "Alkaloid Predictor v2");
   assert.equal(agent.slug, "alkaloid-predictor-v2");
