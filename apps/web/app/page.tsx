@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { seededAgents } from "@kingsvarmo/shared";
+import { getMintedAgents } from "@/lib/agents";
 
 const steps = [
   {
@@ -30,12 +31,9 @@ const sponsors = [
   { name: "KeeperHub",  color: "#93c5fd", badge: "badge-blue",   desc: "Execution Orchestration" },
 ];
 
-export default function HomePage() {
-  const [agent] = seededAgents;
-
-  if (!agent) {
-    return null;
-  }
+export default async function HomePage() {
+  const mintedAgents = await getMintedAgents();
+  const agentsToShow = (mintedAgents.length > 0 ? mintedAgents : [seededAgents[0]]).filter((a) => a !== undefined);
 
   return (
     <>
@@ -72,28 +70,34 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Live agent preview card */}
-          <div className="glass" style={{ marginTop: 64, padding: 24, maxWidth: 480, display: "flex", gap: 16, alignItems: "flex-start" }}>
-            <div className="agent-avatar">🌿</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "0.98rem" }}>
-                  {agent.name}
-                </span>
-                <span className="badge badge-teal" style={{ fontSize: "0.7rem" }}>Published</span>
-              </div>
-              <p style={{ fontSize: "0.83rem", color: "var(--text-2)", marginBottom: 12, lineHeight: 1.5 }}>
-                {agent.description}
-              </p>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "0.82rem", color: "var(--text-3)" }}>
-                  by {agent.creatorName}
-                </span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "0.9rem", color: "var(--teal)", fontWeight: 700 }}>
-                  {agent.priceIn0G} OG
-                </span>
-              </div>
-            </div>
+          {/* Live agent preview cards */}
+          <div style={{ marginTop: 64, display: "flex", flexDirection: "column", gap: 16, maxWidth: 480 }}>
+            {agentsToShow.map((agent) => (
+              <Link key={agent.id} href={`/agents/${agent.onchainTokenId || agent.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                <div className="glass agent-card-hover" style={{ padding: 24, display: "flex", gap: 16, alignItems: "flex-start", transition: "transform 0.2s ease, border-color 0.2s ease" }}>
+                  <div className="agent-avatar">🌿</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "0.98rem" }}>
+                        {agent.name}
+                      </span>
+                      <span className="badge badge-teal" style={{ fontSize: "0.7rem" }}>Published</span>
+                    </div>
+                    <p style={{ fontSize: "0.83rem", color: "var(--text-2)", marginBottom: 12, lineHeight: 1.5 }}>
+                      {agent.description}
+                    </p>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: "0.82rem", color: "var(--text-3)" }}>
+                        by {agent.creatorName}
+                      </span>
+                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "0.9rem", color: "var(--teal)", fontWeight: 700 }}>
+                        {agent.priceIn0G} OG
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
           </div>
         </div>
       </section>

@@ -15,34 +15,9 @@ const DOMAIN_EMOJI: Record<string, string> = {
   default: "🤖",
 };
 
-export function AgentsMarketplaceClient() {
-  const [agents, setAgents] = useState<AgentListing[]>(seededAgents);
+export function AgentsMarketplaceClient({ initialAgents }: { initialAgents: AgentListing[] }) {
+  const [agents, setAgents] = useState<AgentListing[]>(initialAgents);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAgents() {
-      try {
-        const response = await fetchJson<{ agents: AgentListing[] }>("/api/agents");
-
-        if (!cancelled) {
-          setAgents(response.agents);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "Unable to load API agents");
-        }
-      }
-    }
-
-    void loadAgents();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   return (
     <div className="container" style={{ paddingTop: 48, paddingBottom: 80 }}>
@@ -81,7 +56,7 @@ export function AgentsMarketplaceClient() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 20 }}>
         {agents.map((agent) => (
-          <Link key={agent.id} href={`/agents/${agent.slug}`} style={{ display: "contents" }}>
+          <Link key={agent.id} href={`/agents/${agent.onchainTokenId || agent.id}`} style={{ display: "contents" }}>
             <article className="agent-card">
               <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
                 <div className="agent-avatar" style={{ fontSize: "1.5rem" }}>
