@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listInferenceProviders } from "../../../../../../packages/zero-g/src/compute";
+import { listInferenceProviders } from "@kingsvarmo/zero-g";
 
 export async function GET() {
   try {

@@ -126,6 +126,9 @@ export default function ResultPage({ params }: { params: Promise<{ resultId: str
               <a href={`${API_BASE_URL}/api/results/${result.id}`} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">
                 Open Result JSON
               </a>
+              <a href={`${API_BASE_URL}/api/results/${result.id}/download`} className="btn btn-secondary btn-sm">
+                Download Report
+              </a>
               <Link href={`/jobs/${result.jobId}`} className="btn btn-secondary btn-sm">
                 Back to Job Status
               </Link>

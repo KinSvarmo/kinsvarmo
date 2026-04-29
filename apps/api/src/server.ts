@@ -3,7 +3,7 @@ import Fastify from "fastify";
 import { z } from "zod";
 import type { AxlClient } from "@kingsvarmo/axl-client";
 import type { KeeperHubClient } from "@kingsvarmo/keeperhub";
-import { seededAgents, type JobCreateInput } from "@kingsvarmo/shared";
+import { supportedInputFormats, type AgentListing, type JobCreateInput } from "@kingsvarmo/shared";
 import { createBackendAxlClient } from "./integrations/axl";
 import { createBackendKeeperHubClient } from "./integrations/keeperhub";
 import { createInMemoryJobStore, type JobStore } from "./state/store";
@@ -15,6 +15,24 @@ const createJobSchema = z.object({
   filename: z.string().min(1),
   uploadReference: z.string().optional(),
   inputMetadata: z.record(z.unknown()).optional()
+});
+
+const createAgentSchema = z.object({
+  name: z.string().min(1),
+  slug: z.string().min(1).optional(),
+  creatorName: z.string().min(1),
+  creatorWallet: z.string().min(1).default("local-demo-creator"),
+  description: z.string().min(1),
+  longDescription: z.string().optional(),
+  domain: z.string().min(1),
+  supportedFormats: z.array(z.enum(supportedInputFormats)).min(1),
+  priceIn0G: z.string().min(1),
+  runtimeEstimateSeconds: z.number().int().positive().default(90),
+  previewOutput: z.string().min(1),
+  expectedOutput: z.string().optional(),
+  privacyNotes: z.string().optional(),
+  intelligenceReference: z.string().optional(),
+  storageReference: z.string().optional()
 });
 
 export interface BuildApiServerOptions {
@@ -43,14 +61,12 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
   }));
 
   server.get("/api/agents", async () => ({
-    agents: seededAgents
+    agents: store.listAgents()
   }));
 
   server.get("/api/agents/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const agent = seededAgents.find(
-      (candidate) => candidate.id === id || candidate.slug === id
-    );
+    const agent = store.getAgent(id);
 
     if (!agent) {
       return reply.code(404).send({
@@ -61,6 +77,47 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     return {
       agent
     };
+  });
+
+  server.post("/api/agents", async (request, reply) => {
+    const parsed = createAgentSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "invalid_agent_input",
+        issues: parsed.error.issues
+      });
+    }
+
+    const slug = parsed.data.slug ?? slugify(parsed.data.name);
+    const agentInput: Omit<AgentListing, "id" | "createdAt" | "status"> = {
+      name: parsed.data.name,
+      slug,
+      creatorName: parsed.data.creatorName,
+      creatorWallet: parsed.data.creatorWallet,
+      description: parsed.data.description,
+      longDescription: parsed.data.longDescription ?? parsed.data.description,
+      domain: normalizeDomain(parsed.data.domain),
+      supportedFormats: parsed.data.supportedFormats,
+      priceIn0G: parsed.data.priceIn0G,
+      runtimeEstimateSeconds: parsed.data.runtimeEstimateSeconds,
+      previewOutput: parsed.data.previewOutput,
+      expectedOutput:
+        parsed.data.expectedOutput ??
+        "A deterministic local report with confidence, findings, and provenance.",
+      privacyNotes:
+        parsed.data.privacyNotes ??
+        "Local demo jobs keep inputs scoped to the API process memory.",
+      intelligenceReference:
+        parsed.data.intelligenceReference ?? `local://intelligence/${slug}`,
+      storageReference:
+        parsed.data.storageReference ?? `local://metadata/${slug}`
+    };
+    const agent = store.createAgent(agentInput);
+
+    return reply.code(201).send({
+      agent
+    });
   });
 
   server.post("/api/jobs", async (request, reply) => {
@@ -188,6 +245,41 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     };
   });
 
+  server.get("/api/results/:id/download", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = store.getResult(id);
+
+    if (!result) {
+      return reply.code(404).send({
+        error: "result_not_found"
+      });
+    }
+
+    const report = [
+      `KinSvarmo Result Report`,
+      ``,
+      `Result ID: ${result.id}`,
+      `Job ID: ${result.jobId}`,
+      `Confidence: ${Math.round(result.confidence * 100)}%`,
+      `Provenance: ${result.provenanceId}`,
+      `Completed: ${result.completedAt}`,
+      ``,
+      `Summary`,
+      result.summary,
+      ``,
+      `Key Findings`,
+      ...result.keyFindings.map((finding) => `- ${finding}`),
+      ``,
+      `Structured JSON`,
+      JSON.stringify(result.structuredJson, null, 2)
+    ].join("\n");
+
+    return reply
+      .header("Content-Type", "text/plain; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="${result.id}.txt"`)
+      .send(report);
+  });
+
   server.get("/api/jobs/:id/keeperhub", async (request, reply) => {
     const { id } = request.params as { id: string };
     const job = store.getJob(id);
@@ -260,4 +352,16 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
   });
 
   return server;
+}
+
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeDomain(value: string): string {
+  return slugify(value) || "research-ops";
 }

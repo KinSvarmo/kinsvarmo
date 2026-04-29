@@ -183,6 +183,59 @@ test("API returns a friendly KeeperHub error when workflow start fails", async (
   }
 });
 
+test("API can publish a local agent listing and return it through marketplace routes", async () => {
+  const server = await buildApiServer({
+    axlClient: createScriptedAxlClient([]),
+    keeperHubClient: createScriptedKeeperHubClient()
+  });
+
+  try {
+    const createResponse = await server.inject({
+      method: "POST",
+      url: "/api/agents",
+      payload: {
+        name: "Local Methods Reviewer",
+        slug: "local-methods-reviewer",
+        creatorName: "Demo Creator",
+        creatorWallet: "local-demo-creator",
+        description: "Reviews methods metadata for reproducibility gaps.",
+        domain: "research-ops",
+        supportedFormats: ["csv"],
+        priceIn0G: "0.11",
+        runtimeEstimateSeconds: 80,
+        previewOutput: "Checklist-style methods review."
+      }
+    });
+    assert.equal(createResponse.statusCode, 201);
+
+    const agent = createResponse.json<{ agent: { id: string; slug: string } }>().agent;
+    assert.equal(agent.slug, "local-methods-reviewer");
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: "/api/agents"
+    });
+    assert.equal(listResponse.statusCode, 200);
+    assert.ok(
+      listResponse.json<{ agents: Array<{ slug: string }> }>().agents.some(
+        (candidate) => candidate.slug === "local-methods-reviewer"
+      )
+    );
+
+    const detailResponse = await server.inject({
+      method: "GET",
+      url: "/api/agents/local-methods-reviewer"
+    });
+    assert.equal(detailResponse.statusCode, 200);
+    assert.equal(
+      detailResponse.json<{ agent: { id: string } }>().agent.id,
+      agent.id
+    );
+  } finally {
+    await server.close();
+  }
+});
+
 interface ScriptedAxlClient extends AxlClient {
   sentMessages: AxlMessage[];
   rewriteQueuedJobId(jobId: string): void;

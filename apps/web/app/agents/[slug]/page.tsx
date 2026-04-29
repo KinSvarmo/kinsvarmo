@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useRef, useCallback, useEffect } from "react";
-import { notFound, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAccount, useConnect, useBalance } from "wagmi";
 import { seededAgents, type AnalysisJob, type AgentListing } from "@kingsvarmo/shared";
@@ -25,7 +25,6 @@ const STEP_LABELS: Record<Step, string> = {
 
 const ALLOWED_FORMATS = ["csv", "json", "tsv", "txt"];
 const MAX_SIZE_MB = 50;
-const EXECUTABLE_DEMO_AGENT_ID = "agent_alkaloid_predictor_v2";
 
 const DOMAIN_EMOJI: Record<string, string> = {
   phytochemistry: "🌿",
@@ -86,8 +85,10 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const { slug } = use(params);
   const router = useRouter();
   const seededAgent = seededAgents.find((candidate) => candidate.slug === slug || candidate.onchainTokenId === slug);
+  const [apiAgent, setApiAgent] = useState<AgentListing | null>(null);
+  const [isAgentLoaded, setIsAgentLoaded] = useState(false);
   const isTokenIdRoute = /^\d+$/.test(slug);
-  if (!seededAgent && !isTokenIdRoute) return notFound();
+  const baseAgent = apiAgent ?? seededAgent;
   const tokenIdBigInt = seededAgent?.onchainTokenId
     ? BigInt(seededAgent.onchainTokenId)
     : isTokenIdRoute
@@ -97,22 +98,22 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const onchainMetadata = token.agentMetadata.data;
   const onchainTokenURI = token.tokenURI.data;
   const tokenMetadata = useTokenMetadata(onchainTokenURI ? String(onchainTokenURI) : undefined);
-  const tokenId = tokenIdBigInt?.toString() ?? seededAgent?.onchainTokenId ?? slug;
-  const contractAddress = seededAgent?.contractAddress ?? CONTRACT_ADDRESSES.INFTRegistry;
+  const tokenId = tokenIdBigInt?.toString() ?? baseAgent?.onchainTokenId ?? slug;
+  const contractAddress = baseAgent?.contractAddress ?? CONTRACT_ADDRESSES.INFTRegistry;
 
   const resolvedFormats = tokenMetadata.data?.formats?.length
     ? tokenMetadata.data.formats
-    : seededAgent?.supportedFormats ?? ["csv", "json"];
-  const resolvedCreatorName = tokenMetadata.data?.creatorName || onchainMetadata?.[3] || seededAgent?.creatorName || "Onchain creator";
-  const resolvedName = tokenMetadata.data?.name || onchainMetadata?.[0] || seededAgent?.name || `iNFT #${tokenId}`;
-  const resolvedDescription = tokenMetadata.data?.description || onchainMetadata?.[1] || seededAgent?.description || "Readable metadata is still loading from the token URI.";
-  const resolvedPreview = tokenMetadata.data?.previewOutput || seededAgent?.previewOutput || "No preview output available yet.";
-  const resolvedIntelligenceRef = tokenMetadata.data?.intelligenceReference || onchainMetadata?.[5] || seededAgent?.intelligenceReference || "—";
-  const resolvedStorageRef = tokenMetadata.data?.storageReference || onchainMetadata?.[6] || seededAgent?.storageReference || "—";
-  const resolvedPrice = tokenMetadata.data?.priceIn0G || seededAgent?.priceIn0G || "0";
+    : baseAgent?.supportedFormats ?? ["csv", "json"];
+  const resolvedCreatorName = tokenMetadata.data?.creatorName || onchainMetadata?.[3] || baseAgent?.creatorName || "Onchain creator";
+  const resolvedName = tokenMetadata.data?.name || onchainMetadata?.[0] || baseAgent?.name || `iNFT #${tokenId}`;
+  const resolvedDescription = tokenMetadata.data?.description || onchainMetadata?.[1] || baseAgent?.description || "Readable metadata is still loading from the token URI.";
+  const resolvedPreview = tokenMetadata.data?.previewOutput || baseAgent?.previewOutput || "No preview output available yet.";
+  const resolvedIntelligenceRef = tokenMetadata.data?.intelligenceReference || onchainMetadata?.[5] || baseAgent?.intelligenceReference || "—";
+  const resolvedStorageRef = tokenMetadata.data?.storageReference || onchainMetadata?.[6] || baseAgent?.storageReference || "—";
+  const resolvedPrice = tokenMetadata.data?.priceIn0G || baseAgent?.priceIn0G || "0";
   const resolvedRuntimeSeconds = tokenMetadata.data?.runtimeSeconds
     ? Number(tokenMetadata.data.runtimeSeconds)
-    : seededAgent?.runtimeEstimateSeconds ?? 120;
+    : baseAgent?.runtimeEstimateSeconds ?? 120;
 
   const fallbackAgent: AgentListing = {
     id: `agent_token_${tokenId}`,
@@ -124,20 +125,20 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
     creatorWallet: token.owner.data ? String(token.owner.data) : "0x0000000000000000000000000000000000000000",
     description: resolvedDescription,
     longDescription: resolvedDescription,
-    domain: tokenMetadata.data?.domain || seededAgent?.domain || "onchain",
+    domain: tokenMetadata.data?.domain || baseAgent?.domain || "onchain",
     supportedFormats: resolvedFormats as AgentListing["supportedFormats"],
     priceIn0G: resolvedPrice,
     runtimeEstimateSeconds: resolvedRuntimeSeconds,
     status: "published",
     previewOutput: resolvedPreview,
     expectedOutput: resolvedPreview,
-    privacyNotes: seededAgent?.privacyNotes || "Onchain token metadata",
-    createdAt: seededAgent?.createdAt || "1970-01-01T00:00:00.000Z",
+    privacyNotes: baseAgent?.privacyNotes || "Onchain token metadata",
+    createdAt: baseAgent?.createdAt || "1970-01-01T00:00:00.000Z",
     ...(resolvedIntelligenceRef !== "—" ? { intelligenceReference: resolvedIntelligenceRef } : {}),
     ...(resolvedStorageRef !== "—" ? { storageReference: resolvedStorageRef } : {}),
   };
-  const agent = seededAgent ?? fallbackAgent;
-  const isExecutableDemoAgent = agent.id === EXECUTABLE_DEMO_AGENT_ID;
+  const agent = baseAgent ?? fallbackAgent;
+  const isExecutableDemoAgent = agent.status === "published";
   const displayName = resolvedName;
   const displayCreator = resolvedCreatorName;
   const displayDescription = resolvedDescription;
@@ -171,6 +172,49 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const { connect } = useConnect();
   const { data: balance } = useBalance({ address, chainId: ogTestnet.id });
   const { purchaseUsage, txHash, isPending, isConfirming, isSuccess, error } = usePurchaseUsage();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAgent() {
+      try {
+        const response = await fetchJson<{ agent: AgentListing }>(`/api/agents/${slug}`);
+
+        if (!cancelled) {
+          setApiAgent(response.agent);
+        }
+      } catch {
+        if (!cancelled) {
+          setApiAgent(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsAgentLoaded(true);
+        }
+      }
+    }
+
+    void loadAgent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  if (!baseAgent && !isTokenIdRoute && isAgentLoaded) {
+    return (
+      <div className="container" style={{ paddingTop: 80, paddingBottom: 80, maxWidth: 720 }}>
+        <div className="glass-lg" style={{ padding: 32 }}>
+          <p className="eyebrow" style={{ marginBottom: 10 }}>Agent</p>
+          <h1 style={{ fontSize: "1.8rem", marginBottom: 12 }}>Agent unavailable</h1>
+          <div className="callout callout-error" style={{ marginBottom: 20 }}>
+            This agent could not be found in the API marketplace.
+          </div>
+          <Link href="/agents" className="btn btn-secondary">Back to Agents</Link>
+        </div>
+      </div>
+    );
+  }
 
   // File validation
   const validateFile = useCallback((f: File) => {
@@ -247,11 +291,11 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
         body: JSON.stringify({
           agentId: agent.id,
           userWallet: address ?? "0x0000000000000000000000000000000000000001",
-          filename: "alkaloid-sample.csv",
-          uploadReference: "demo://alkaloid-sample.csv",
+          filename: `${agent.slug}-demo.csv`,
+          uploadReference: `demo://${agent.slug}.csv`,
           inputMetadata: {
             source: "ui-demo-run",
-            analysisType: "phytochemistry-demo",
+            analysisType: `${agent.domain}-demo`,
             mode: "local-axl-plus-real-keeperhub"
           }
         })
@@ -266,6 +310,47 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
       setApiError(caught instanceof Error ? caught.message : "Could not start the demo workflow");
     } finally {
       setIsStartingDemoRun(false);
+    }
+  };
+
+  const handleLocalUploadRun = async () => {
+    if (isSubmittingJob || !file) {
+      return;
+    }
+
+    setApiError(null);
+    setIsSubmittingJob(true);
+
+    try {
+      const datasetText = await file.text();
+      const { job } = await fetchJson<{ job: AnalysisJob }>("/api/jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: agent.id,
+          userWallet: address ?? "local-demo-user",
+          filename: file.name,
+          uploadReference: `local://uploads/${Date.now()}-${file.name}`,
+          inputMetadata: {
+            source: "web-local-upload",
+            analysisType: `${agent.domain}-demo`,
+            datasetText,
+            totalOG,
+            storageFee,
+            protocolFee,
+            fileSizeBytes: file.size
+          }
+        })
+      });
+
+      await fetchJson<{ job: AnalysisJob | null }>(`/api/jobs/${job.id}/start`, {
+        method: "POST"
+      });
+
+      router.push(`/jobs/${job.id}`);
+    } catch (caught) {
+      setApiError(caught instanceof Error ? caught.message : "Could not start the local analysis job");
+    } finally {
+      setIsSubmittingJob(false);
     }
   };
 
@@ -450,7 +535,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                 <div className="glass" style={{ marginTop: 16, padding: 18, background: "var(--bg-raised)" }}>
                   <p className="eyebrow" style={{ marginBottom: 8 }}>AXL + KeeperHub test path</p>
                   <p style={{ color: "var(--text-2)", fontSize: "0.86rem", lineHeight: 1.6, marginBottom: 14 }}>
-                    Start a seeded demo job without wallet payment. This creates an API job, triggers the real KeeperHub workflow, and sends the request through local AXL worker nodes.
+                    Start a local demo job without wallet payment. This creates an API job, triggers KeeperHub, and sends the request through AXL worker nodes.
                   </p>
                   <button
                     className="btn btn-primary"
@@ -459,11 +544,6 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                   >
                     {isStartingDemoRun ? "Starting Demo Workflow..." : "Run Demo Analysis"}
                   </button>
-                </div>
-              )}
-              {seededAgent && !isExecutableDemoAgent && (
-                <div className="callout callout-info" style={{ marginTop: 16 }}>
-                  This is a seeded marketplace preview. The first end-to-end AXL + KeeperHub execution path is currently wired to Alkaloid Predictor v2.
                 </div>
               )}
               {apiError && (
@@ -619,7 +699,14 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
 
               <div style={{ display: "flex", gap: 12 }}>
                 <button className="btn btn-ghost" onClick={() => setStep("validate")}>← Back</button>
-                <button className="btn btn-primary" onClick={() => setStep("confirm")}>Authorize & Run →</button>
+                <button
+                  className="btn btn-primary"
+                  disabled={!file || isSubmittingJob}
+                  onClick={handleLocalUploadRun}
+                >
+                  {isSubmittingJob ? "Starting local workflow..." : "Start Local AXL Run"}
+                </button>
+                <button className="btn btn-secondary" onClick={() => setStep("confirm")}>Wallet Flow →</button>
               </div>
             </div>
           )}

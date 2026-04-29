@@ -1,4 +1,5 @@
 import type {
+  AgentListing,
   AnalysisJob,
   AnalysisResult,
   AxlMessage,
@@ -7,8 +8,12 @@ import type {
   ModuleStatus,
   PaymentStatus
 } from "@kingsvarmo/shared";
+import { seededAgents } from "@kingsvarmo/shared";
 
 export interface JobStore {
+  listAgents(): AgentListing[];
+  getAgent(idOrSlug: string): AgentListing | undefined;
+  createAgent(input: Omit<AgentListing, "id" | "createdAt" | "status"> & Partial<Pick<AgentListing, "id" | "createdAt" | "status">>): AgentListing;
   createJob(input: JobCreateInput): AnalysisJob;
   getJob(jobId: string): AnalysisJob | undefined;
   listMessages(jobId: string): AxlMessage[];
@@ -20,20 +25,51 @@ export interface JobStore {
 }
 
 export function createInMemoryJobStore(): JobStore {
+  const agents = new Map<string, AgentListing>(
+    seededAgents.map((agent) => [agent.id, agent])
+  );
   const jobs = new Map<string, AnalysisJob>();
   const messages = new Map<string, AxlMessage[]>();
   const results = new Map<string, AnalysisResult>();
 
   return {
+    listAgents() {
+      return [...agents.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    },
+    getAgent(idOrSlug) {
+      return [...agents.values()].find(
+        (agent) =>
+          agent.id === idOrSlug ||
+          agent.slug === idOrSlug ||
+          agent.onchainTokenId === idOrSlug
+      );
+    },
+    createAgent(input) {
+      const now = new Date().toISOString();
+      const id = input.id ?? `agent_${slugify(input.slug || input.name)}_${agents.size + 1}`;
+      const agent: AgentListing = {
+        ...input,
+        id,
+        status: input.status ?? "published",
+        createdAt: input.createdAt ?? now
+      };
+
+      agents.set(agent.id, agent);
+      return agent;
+    },
     createJob(input) {
       const now = new Date().toISOString();
+      const agent = [...agents.values()].find((candidate) => candidate.id === input.agentId);
       const job: AnalysisJob = {
         id: `job_${Date.now()}_${jobs.size + 1}`,
         agentId: input.agentId,
         userWallet: input.userWallet,
         filename: input.filename,
         ...(input.uploadReference ? { uploadReference: input.uploadReference } : {}),
-        inputMetadata: input.inputMetadata ?? {},
+        inputMetadata: {
+          ...(input.inputMetadata ?? {}),
+          ...(agent ? { agentSnapshot: agent } : {})
+        },
         status: "created",
         paymentStatus: "authorized",
         plannerStatus: "pending",
@@ -91,6 +127,14 @@ export function createInMemoryJobStore(): JobStore {
       return [...results.values()].find((result) => result.jobId === jobId);
     }
   };
+}
+
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function createJobPatchFromAxlMessage(

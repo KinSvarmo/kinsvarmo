@@ -4,18 +4,19 @@ import {
   type AxlParticipant
 } from "@kingsvarmo/axl-client";
 import {
-  createDemoPlan,
-  createDemoReport,
-  runDemoAnalysis,
-  reviewDemoAnalysis
+  createGenericDemoPlan,
+  createGenericDemoReport,
+  runGenericDemoAnalysis,
+  reviewGenericDemoAnalysis
 } from "@kingsvarmo/agents";
 import type {
-  DemoAnalysisOutput,
-  DemoCriticOutput,
-  DemoPlanOutput
+  GenericDemoAnalysisOutput,
+  GenericDemoCriticOutput,
+  GenericDemoPlanOutput
 } from "@kingsvarmo/agents";
-import type { AnalysisJob } from "@kingsvarmo/shared";
+import type { AgentListing, AnalysisJob } from "@kingsvarmo/shared";
 import type { AxlMessage } from "@kingsvarmo/shared";
+import { seededAgents } from "@kingsvarmo/shared";
 import {
   createLocalAxlNodeMap,
   isAxlParticipant,
@@ -131,8 +132,10 @@ function handleMessage(
   message: AxlMessage
 ): AxlMessage | null {
   if (worker === "planner" && message.type === "job.created") {
-    const plan = createDemoPlan({
-      job: extractJob(message)
+    const job = extractJob(message);
+    const plan = createGenericDemoPlan({
+      job,
+      agent: extractAgent(message, job.agentId)
     });
 
     return createMessage(message, {
@@ -147,7 +150,7 @@ function handleMessage(
   }
 
   if (worker === "analyzer" && message.type === "plan.generated") {
-    const analysis = runDemoAnalysis(extractPlan(message));
+    const analysis = runGenericDemoAnalysis(extractPlan(message));
 
     return createMessage(message, {
       sender: "analyzer",
@@ -161,7 +164,7 @@ function handleMessage(
   }
 
   if (worker === "critic" && message.type === "analysis.completed") {
-    const review = reviewDemoAnalysis(extractAnalysis(message));
+    const review = reviewGenericDemoAnalysis(extractAnalysis(message));
 
     return createMessage(message, {
       sender: "critic",
@@ -175,7 +178,7 @@ function handleMessage(
   }
 
   if (worker === "reporter" && message.type === "critic.reviewed") {
-    const report = createDemoReport(extractReview(message));
+    const report = createGenericDemoReport(extractReview(message));
 
     return createMessage(message, {
       sender: "reporter",
@@ -252,16 +255,26 @@ function extractJob(message: AxlMessage): AnalysisJob {
   };
 }
 
-function extractPlan(message: AxlMessage): DemoPlanOutput {
-  return message.payload as unknown as DemoPlanOutput;
+function extractPlan(message: AxlMessage): GenericDemoPlanOutput {
+  return message.payload as unknown as GenericDemoPlanOutput;
 }
 
-function extractAnalysis(message: AxlMessage): DemoAnalysisOutput {
-  return message.payload as unknown as DemoAnalysisOutput;
+function extractAnalysis(message: AxlMessage): GenericDemoAnalysisOutput {
+  return message.payload as unknown as GenericDemoAnalysisOutput;
 }
 
-function extractReview(message: AxlMessage): DemoCriticOutput {
-  return message.payload as unknown as DemoCriticOutput;
+function extractReview(message: AxlMessage): GenericDemoCriticOutput {
+  return message.payload as unknown as GenericDemoCriticOutput;
+}
+
+function extractAgent(message: AxlMessage, agentId: string): AgentListing | undefined {
+  const agent = message.payload.agent;
+
+  if (typeof agent === "object" && agent !== null && "id" in agent) {
+    return agent as AgentListing;
+  }
+
+  return seededAgents.find((candidate) => candidate.id === agentId);
 }
 
 function isAnalysisJob(value: unknown): value is AnalysisJob {

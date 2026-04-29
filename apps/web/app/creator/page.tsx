@@ -2,11 +2,14 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAccount, useConnect } from "wagmi";
 import { keccak256, toBytes } from "viem";
 import { useMintINFT } from "@/hooks/useINFTRegistry";
 import { use0GStorage } from "@/hooks/use0GStorage";
+import { fetchJson } from "@/lib/api";
 import { injectedConnector } from "@/lib/wagmi";
+import type { AgentListing } from "@kingsvarmo/shared";
 
 type Step = "basics" | "config" | "compute" | "dataset" | "review";
 const STEP_ORDER: Step[] = ["basics", "config", "compute", "dataset", "review"];
@@ -46,6 +49,7 @@ function isJsonlFile(file: File): boolean {
 }
 
 export default function CreatorPage() {
+  const router = useRouter();
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const { mint, isPending: isMintPending, isConfirming, isSuccess, txHash, error: mintError } = useMintINFT();
@@ -58,6 +62,8 @@ export default function CreatorPage() {
   const [metadataURI, setMetadataURI] = useState<string>("");
   const [isStoreFlowRunning, setIsStoreFlowRunning] = useState(false);
   const [isMintFlowRunning, setIsMintFlowRunning] = useState(false);
+  const [isLocalPublishing, setIsLocalPublishing] = useState(false);
+  const [localPublishError, setLocalPublishError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -216,7 +222,47 @@ export default function CreatorPage() {
     }
   };
 
-  const isPending = isStoreFlowRunning || isMintFlowRunning || isUploading || isMintPending;
+  const handleLocalPublish = async () => {
+    if (isLocalPublishing || !canProceed.basics || !canProceed.config) {
+      return;
+    }
+
+    setLocalPublishError(null);
+    setIsLocalPublishing(true);
+
+    try {
+      const supportedFormats = form.formats.filter((format): format is "csv" | "json" =>
+        format === "csv" || format === "json"
+      );
+      const response = await fetchJson<{ agent: AgentListing }>("/api/agents", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name,
+          slug: form.slug,
+          creatorName: form.creatorName,
+          creatorWallet: address ?? "local-demo-creator",
+          description: form.description,
+          longDescription: form.description,
+          domain: form.domain,
+          supportedFormats: supportedFormats.length > 0 ? supportedFormats : ["csv"],
+          priceIn0G: form.priceIn0G,
+          runtimeEstimateSeconds: Number(form.runtimeSeconds) || 90,
+          previewOutput:
+            form.previewOutput || "Deterministic local report with confidence and provenance.",
+          expectedOutput: "A deterministic report with confidence, key findings, and structured JSON.",
+          privacyNotes: "Local demo listing. Jobs are scoped to the running API process."
+        })
+      });
+
+      router.push(`/agents/${response.agent.slug}`);
+    } catch (caught) {
+      setLocalPublishError(caught instanceof Error ? caught.message : "Could not publish the local agent");
+    } finally {
+      setIsLocalPublishing(false);
+    }
+  };
+
+  const isPending = isStoreFlowRunning || isMintFlowRunning || isUploading || isMintPending || isLocalPublishing;
 
   if (isSuccess && txHash) {
     return (
@@ -408,6 +454,25 @@ export default function CreatorPage() {
                       </span>
                     </div>
                   ))}
+                </div>
+
+                <div className="glass" style={{ padding: 20, background: "var(--bg-raised)" }}>
+                  <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>Local demo publish</p>
+                  <p style={{ color: "var(--text-2)", fontSize: "0.84rem", lineHeight: 1.6, marginBottom: 14 }}>
+                    Publish this agent to the in-memory API marketplace now. It will be executable through the same AXL + KeeperHub workflow as the seeded agents.
+                  </p>
+                  {localPublishError && (
+                    <div className="callout callout-error" style={{ marginBottom: 12 }}>
+                      {localPublishError}
+                    </div>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    disabled={!canProceed.basics || !canProceed.config || isLocalPublishing}
+                    onClick={handleLocalPublish}
+                  >
+                    {isLocalPublishing ? "Publishing..." : "Publish Local Agent"}
+                  </button>
                 </div>
               </div>
             </div>

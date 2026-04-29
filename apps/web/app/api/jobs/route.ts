@@ -14,10 +14,9 @@ export async function POST(req: Request) {
       agentId: body.agentId,
       userWallet: body.userWallet,
       filename: body.filename,
-      uploadReference: body.uploadReference,
       inputMetadata: body.inputMetadata ?? {},
       status: "created",
-      paymentStatus: "paid",
+      paymentStatus: "authorized",
       plannerStatus: "pending",
       analyzerStatus: "pending",
       criticStatus: "pending",
@@ -25,6 +24,10 @@ export async function POST(req: Request) {
       createdAt: now,
       updatedAt: now,
     };
+
+    if (body.uploadReference) {
+      newJob.uploadReference = body.uploadReference;
+    }
     
     jobsStore.set(jobId, newJob);
     messagesStore.set(jobId, []);

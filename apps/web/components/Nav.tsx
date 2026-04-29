@@ -22,7 +22,8 @@ export function Nav() {
 
   const links = [
     { href: "/agents",  label: "Browse Agents" },
-    { href: "/creator", label: "Mint iNFT" },
+    { href: "/creator", label: "Create Agent" },
+    { href: "/status", label: "System" },
   ];
 
   return (

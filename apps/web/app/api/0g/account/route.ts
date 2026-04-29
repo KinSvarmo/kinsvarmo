@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { depositFunds, topUpDeposit, transferFundsToProvider, getLedgerInfo } from "../../../../../../packages/zero-g/src/compute";
+import { depositFunds, topUpDeposit, transferFundsToProvider, getLedgerInfo } from "@kingsvarmo/zero-g";
 
 /**
  * POST /api/0g/account

@@ -1,6 +1,28 @@
 import { NextResponse } from "next/server";
 import { jobsStore, messagesStore, keeperHubStore, resultsStore } from "@/lib/store";
-import { runInference } from "../../../../../../../packages/zero-g/src/compute";
+import { runInference } from "@kingsvarmo/zero-g";
+import type { AxlMessage } from "@kingsvarmo/shared";
+
+type LocalKeeperHubRun = {
+  id: string;
+  jobId: string;
+  state: "running" | "completed" | "failed";
+  workflowId: string;
+  logs: Array<{
+    id: string;
+    runId: string;
+    timestamp: string;
+    level: "info" | "error";
+    message: string;
+    metadata: Record<string, unknown>;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+  raw: {
+    nodeStatuses: Array<{ nodeId: string; status: string }>;
+    execution: { executionTrace: string[] };
+  };
+};
 
 export async function POST(req: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
@@ -16,13 +38,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ jobId: 
     }
 
     // 1. Update status to started
-    job.status = "running";
+    job.status = "planning";
     job.plannerStatus = "running";
     job.keeperhubRunId = `run_${Date.now()}`;
     jobsStore.set(jobId, job);
 
     // Create initial keeperHub state
-    const keeperRun = {
+    const keeperRun: LocalKeeperHubRun = {
       id: job.keeperhubRunId,
       jobId,
       state: "running",
@@ -40,20 +62,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ jobId: 
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       raw: {
-        nodeStatuses: [{ nodeId: "planner_1", status: "Running" }],
-        execution: { executionTrace: ["planner_1"] }
+        nodeStatuses: [{ nodeId: "planner", status: "Running" }],
+        execution: { executionTrace: ["planner"] }
       }
     };
     keeperHubStore.set(jobId, keeperRun);
 
     // Mock planner message
-    const messages = [];
+    const messages: AxlMessage[] = [];
     messages.push({
       id: `msg_${Date.now()}_1`,
       jobId,
       sender: "api",
-      receiver: "planner_1",
-      type: "plan.requested",
+      receiver: "planner",
+      type: "job.created",
       timestamp: new Date().toISOString(),
       payload: { instruction: "Analyze CSV data" }
     });
@@ -76,7 +98,7 @@ async function runAnalysisWorkflow(jobId: string) {
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   const job = jobsStore.get(jobId)!;
   const messages = messagesStore.get(jobId)!;
-  const keeperRun = keeperHubStore.get(jobId)!;
+  const keeperRun = keeperHubStore.get(jobId) as LocalKeeperHubRun;
 
   try {
     // ----------------------------------------------------------------------
@@ -85,10 +107,11 @@ async function runAnalysisWorkflow(jobId: string) {
     await delay(1500);
     job.plannerStatus = "completed";
     job.analyzerStatus = "running";
+    job.status = "analyzing";
     jobsStore.set(jobId, job);
     
-    keeperRun.raw.nodeStatuses.push({ nodeId: "analyzer_1", status: "Running" });
-    keeperRun.raw.execution.executionTrace.push("analyzer_1");
+    keeperRun.raw.nodeStatuses.push({ nodeId: "analyzer", status: "Running" });
+    keeperRun.raw.execution.executionTrace.push("analyzer");
     keeperRun.logs.push({
       id: `log_${Date.now()}`,
       runId: job.keeperhubRunId!,
@@ -101,8 +124,8 @@ async function runAnalysisWorkflow(jobId: string) {
     messages.push({
       id: `msg_${Date.now()}_2`,
       jobId,
-      sender: "planner_1",
-      receiver: "analyzer_1",
+      sender: "planner",
+      receiver: "analyzer",
       type: "plan.generated",
       timestamp: new Date().toISOString(),
       payload: { steps: ["run_0g_compute"] }
@@ -167,20 +190,21 @@ async function runAnalysisWorkflow(jobId: string) {
 
     job.analyzerStatus = "completed";
     job.criticStatus = "running";
+    job.status = "reviewing";
     jobsStore.set(jobId, job);
 
     messages.push({
       id: `msg_${Date.now()}_3`,
       jobId,
-      sender: "analyzer_1",
-      receiver: "critic_1",
+      sender: "analyzer",
+      receiver: "critic",
       type: "analysis.completed",
       timestamp: new Date().toISOString(),
       payload: { output: analysisOutput, zgChatId: inferenceChatId }
     });
 
-    keeperRun.raw.nodeStatuses.push({ nodeId: "critic_1", status: "Running" });
-    keeperRun.raw.execution.executionTrace.push("critic_1");
+    keeperRun.raw.nodeStatuses.push({ nodeId: "critic", status: "Running" });
+    keeperRun.raw.execution.executionTrace.push("critic");
 
     // ----------------------------------------------------------------------
     // CRITIC
@@ -188,20 +212,21 @@ async function runAnalysisWorkflow(jobId: string) {
     await delay(1500);
     job.criticStatus = "completed";
     job.reporterStatus = "running";
+    job.status = "reporting";
     jobsStore.set(jobId, job);
 
     messages.push({
       id: `msg_${Date.now()}_4`,
       jobId,
-      sender: "critic_1",
-      receiver: "reporter_1",
-      type: "critic.approved",
+      sender: "critic",
+      receiver: "reporter",
+      type: "critic.reviewed",
       timestamp: new Date().toISOString(),
       payload: { score: 0.95 }
     });
 
-    keeperRun.raw.nodeStatuses.push({ nodeId: "reporter_1", status: "Running" });
-    keeperRun.raw.execution.executionTrace.push("reporter_1");
+    keeperRun.raw.nodeStatuses.push({ nodeId: "reporter", status: "Running" });
+    keeperRun.raw.execution.executionTrace.push("reporter");
 
     // ----------------------------------------------------------------------
     // REPORTER & FINISH
@@ -217,7 +242,7 @@ async function runAnalysisWorkflow(jobId: string) {
     messages.push({
       id: `msg_${Date.now()}_5`,
       jobId,
-      sender: "reporter_1",
+      sender: "reporter",
       receiver: "api",
       type: "report.generated",
       timestamp: new Date().toISOString(),
