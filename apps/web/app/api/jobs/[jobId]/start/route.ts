@@ -137,10 +137,20 @@ async function runAnalysisWorkflow(jobId: string) {
     await delay(1000);
     
     // Check if we have 0G Provider set up
-    const providerAddress = process.env.ZERO_G_INFERENCE_PROVIDER;
+    const providerAddress =
+      process.env.ZERO_G_COMPUTE_PROVIDER_ADDRESS ?? process.env.ZERO_G_INFERENCE_PROVIDER;
+    const computeModel = process.env.ZERO_G_COMPUTE_MODEL ?? "qwen/qwen-2.5-7b-instruct";
+    const computeServiceUrl = process.env.ZERO_G_COMPUTE_SERVICE_URL ?? null;
     let analysisOutput = "Simulated output: No 0G inference provider configured.";
     let inferenceChatId: string | null = null;
     let inferenceVerified: boolean | null = null;
+    let zeroGCompute: Record<string, unknown> = {
+      mode: "simulated",
+      reason: "No 0G inference provider configured.",
+      providerAddress: null,
+      model: computeModel,
+      serviceUrl: computeServiceUrl
+    };
 
     if (providerAddress) {
       try {
@@ -166,6 +176,16 @@ async function runAnalysisWorkflow(jobId: string) {
         analysisOutput = result.text;
         inferenceChatId = result.chatId;
         inferenceVerified = result.verified;
+        zeroGCompute = {
+          mode: isLocalPlaceholderInference(result.raw) ? "simulated" : "real",
+          providerAddress,
+          model: computeModel,
+          serviceUrl: computeServiceUrl,
+          chatId: result.chatId,
+          verified: result.verified,
+          summary: result.text,
+          raw: result.raw
+        };
 
         keeperRun.logs.push({
           id: `log_${Date.now()}`,
@@ -185,6 +205,13 @@ async function runAnalysisWorkflow(jobId: string) {
           metadata: {}
         });
         analysisOutput = "Failed to run 0G Compute inference.";
+        zeroGCompute = {
+          mode: "failed",
+          providerAddress,
+          model: computeModel,
+          serviceUrl: computeServiceUrl,
+          error: err instanceof Error ? err.message : String(err)
+        };
       }
     }
 
@@ -262,6 +289,7 @@ async function runAnalysisWorkflow(jobId: string) {
         estimatedDl50: 22.4,
         method: "0G Compute Inference",
         verified: inferenceVerified,
+        zeroGCompute,
       },
       explanation: "This workflow used 0G Compute to run the analysis.",
       provenanceId: inferenceChatId || `prov_${Date.now()}`,
@@ -291,4 +319,13 @@ async function runAnalysisWorkflow(jobId: string) {
       metadata: {}
     });
   }
+}
+
+function isLocalPlaceholderInference(raw: unknown): boolean {
+  return (
+    typeof raw === "object" &&
+    raw !== null &&
+    "mode" in raw &&
+    (raw as { mode?: unknown }).mode === "local-placeholder"
+  );
 }

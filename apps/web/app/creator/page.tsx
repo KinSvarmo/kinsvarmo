@@ -175,7 +175,7 @@ export default function CreatorPage() {
 
   const handleUpload = async () => {
     if (isStoreFlowRunning || isUploading || isMintPending || isConfirming) return;
-    if (!isConnected) { connect({ connector: injectedConnector }); return; }
+    if (!isConnected) { connect({ connector: injectedConnector, chainId: 16602 }); return; }
     if (!datasetFile) return;
 
     setIsStoreFlowRunning(true);
@@ -202,7 +202,7 @@ export default function CreatorPage() {
 
   const handleMint = async () => {
     if (isMintFlowRunning || isUploading || isMintPending || isConfirming) return;
-    if (!isConnected) { connect({ connector: injectedConnector }); return; }
+    if (!isConnected) { connect({ connector: injectedConnector, chainId: 16602 }); return; }
     if (!datasetURI) return;
 
     setIsMintFlowRunning(true);
@@ -701,7 +701,7 @@ export default function CreatorPage() {
                   <div className="callout callout-warn" style={{ marginBottom: 16 }}>
                     Connect your wallet to mint this iNFT on 0G.
                   </div>
-                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injectedConnector })}>
+                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injectedConnector, chainId: 16602 })}>
                     Connect Wallet
                   </button>
                 </div>

@@ -16,6 +16,36 @@ type HealthResponse = {
     mode?: string;
     healthy?: boolean;
   };
+  zeroG?: ZeroGStatus;
+};
+
+type ZeroGStatus = {
+  configured: boolean;
+  chain: {
+    configured: boolean;
+    rpcUrl?: string;
+    explorerUrl?: string;
+    missing: string[];
+  };
+  storage: {
+    configured: boolean;
+    endpoint?: string;
+    missing: string[];
+  };
+  compute: {
+    configured: boolean;
+    providerAddress?: string;
+    serviceUrl?: string;
+    model?: string;
+    hasSecret: boolean;
+    missing: string[];
+  };
+  contracts: {
+    configured: boolean;
+    agentRegistryAddress?: string;
+    usageAuthorizationAddress?: string;
+    missing: string[];
+  };
 };
 
 export default function StatusPage() {
@@ -86,6 +116,16 @@ export default function StatusPage() {
           rows={[
             ["Configured", health?.keeperHub?.configured ? "yes" : "no"],
             ["Mode", health?.keeperHub?.mode ?? "unknown"]
+          ]}
+        />
+        <StatusCard
+          title="0G"
+          status={health?.zeroG?.configured ? "healthy" : "check"}
+          rows={[
+            ["Chain", health?.zeroG?.chain.configured ? "configured" : `missing ${health?.zeroG?.chain.missing.length ?? 0}`],
+            ["Storage", health?.zeroG?.storage.configured ? "configured" : `missing ${health?.zeroG?.storage.missing.length ?? 0}`],
+            ["Compute", health?.zeroG?.compute.configured ? "configured" : `missing ${health?.zeroG?.compute.missing.length ?? 0}`],
+            ["Contracts", health?.zeroG?.contracts.configured ? "configured" : `missing ${health?.zeroG?.contracts.missing.length ?? 0}`]
           ]}
         />
       </div>

@@ -95,6 +95,11 @@ test("local agent workers complete the AXL message chain", async () => {
     assert.equal(report.message.sender, "reporter");
     assert.equal(report.message.receiver, "api");
     assert.equal(report.message.payload.provenanceId, `prov_${jobId}`);
+    assert.equal(
+      typeof getRecord(report.message.payload.structuredJson)?.zeroGCompute,
+      "object",
+      "report should preserve 0G Compute proof metadata"
+    );
   } finally {
     await stopProcesses([...workers, ...nodes]);
   }
@@ -279,6 +284,12 @@ async function stopProcesses(processes: StartedProcess[]): Promise<void> {
 
 function createPortOffset(): number {
   return 20_000 + Math.floor(Math.random() * 10_000);
+}
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function sleep(ms: number): Promise<void> {

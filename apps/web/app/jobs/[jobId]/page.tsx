@@ -416,6 +416,7 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
                 <div className="job-detail-list" style={{ marginBottom: 16 }}>
                   <Detail label="Confidence" value={`${Math.round(result.confidence * 100)}%`} />
                   <Detail label="Provenance" value={result.provenanceId} monospace />
+                  <Detail label="0G Compute" value={getZeroGComputeMode(result)} />
                   {result.structuredJson.verified === true && (
                      <Detail label="0G Verified" value="✓ Valid TEE Signature" />
                   )}
@@ -548,6 +549,22 @@ function summarizeKeeperHubLog(message: string): string {
   }
 
   return message.length > 120 ? `${message.slice(0, 117)}...` : message;
+}
+
+function getZeroGComputeMode(result: AnalysisResult): string {
+  const candidate =
+    asRecord(result.structuredJson.zeroGCompute) ??
+    asRecord(asRecord(result.structuredJson.structuredJson)?.zeroGCompute);
+
+  if (!isRecord(candidate)) {
+    return "not recorded";
+  }
+
+  return typeof candidate.mode === "string" ? candidate.mode : "unknown";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

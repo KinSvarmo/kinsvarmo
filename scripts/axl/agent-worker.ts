@@ -9,6 +9,7 @@ import {
   runGenericDemoAnalysis,
   reviewGenericDemoAnalysis
 } from "@kingsvarmo/agents";
+import { runInference } from "@kingsvarmo/zero-g";
 import type {
   GenericDemoAnalysisOutput,
   GenericDemoCriticOutput,
@@ -71,7 +72,7 @@ async function main(): Promise<void> {
       })
     );
 
-    const outgoing = handleMessage(participant, inbound.message);
+    const outgoing = await handleMessage(participant, inbound.message);
 
     if (!outgoing) {
       continue;
@@ -127,10 +128,10 @@ function parseWorkerParticipant(): WorkerParticipant {
   return candidate;
 }
 
-function handleMessage(
+async function handleMessage(
   worker: WorkerParticipant,
   message: AxlMessage
-): AxlMessage | null {
+): Promise<AxlMessage | null> {
   if (worker === "planner" && message.type === "job.created") {
     const job = extractJob(message);
     const plan = createGenericDemoPlan({
@@ -151,6 +152,7 @@ function handleMessage(
 
   if (worker === "analyzer" && message.type === "plan.generated") {
     const analysis = runGenericDemoAnalysis(extractPlan(message));
+    const zeroGCompute = await runZeroGComputeIfConfigured(extractPlan(message));
 
     return createMessage(message, {
       sender: "analyzer",
@@ -158,13 +160,15 @@ function handleMessage(
       type: "analysis.completed",
       payload: {
         ...analysis,
+        zeroGCompute,
         sourceMessageId: message.id
       }
     });
   }
 
   if (worker === "critic" && message.type === "analysis.completed") {
-    const review = reviewGenericDemoAnalysis(extractAnalysis(message));
+    const analysis = extractAnalysis(message);
+    const review = reviewGenericDemoAnalysis(analysis);
 
     return createMessage(message, {
       sender: "critic",
@@ -172,6 +176,7 @@ function handleMessage(
       type: "critic.reviewed",
       payload: {
         ...review,
+        zeroGCompute: extractZeroGCompute(message),
         sourceMessageId: message.id
       }
     });
@@ -179,6 +184,8 @@ function handleMessage(
 
   if (worker === "reporter" && message.type === "critic.reviewed") {
     const report = createGenericDemoReport(extractReview(message));
+    const zeroGCompute = extractZeroGCompute(message);
+    const isRealZeroGCompute = isRealZeroGComputeResult(zeroGCompute);
 
     return createMessage(message, {
       sender: "reporter",
@@ -186,12 +193,81 @@ function handleMessage(
       type: "report.generated",
       payload: {
         ...report,
+        summary: isRealZeroGCompute && typeof zeroGCompute.summary === "string"
+          ? zeroGCompute.summary
+          : report.summary,
+        keyFindings: isRealZeroGCompute
+          ? [
+              "0G Compute inference completed through the configured provider",
+              ...report.keyFindings
+            ]
+          : report.keyFindings,
+        structuredJson: {
+          ...report.structuredJson,
+          zeroGCompute
+        },
+        provenanceId: isRealZeroGCompute && typeof zeroGCompute.chatId === "string"
+          ? `0g_compute_${zeroGCompute.chatId}`
+          : report.provenanceId,
         sourceMessageId: message.id
       }
     });
   }
 
   return null;
+}
+
+async function runZeroGComputeIfConfigured(plan: GenericDemoPlanOutput): Promise<Record<string, unknown>> {
+  const providerAddress =
+    process.env.ZERO_G_COMPUTE_PROVIDER_ADDRESS ?? process.env.ZERO_G_INFERENCE_PROVIDER;
+  const model = process.env.ZERO_G_COMPUTE_MODEL;
+  const serviceUrl = process.env.ZERO_G_COMPUTE_SERVICE_URL;
+  const hasSecret = Boolean(process.env.ZERO_G_COMPUTE_API_SECRET);
+
+  if (!providerAddress || !model || !serviceUrl || !hasSecret) {
+    return {
+      mode: "simulated",
+      reason: "0G Compute env is incomplete",
+      providerAddress: providerAddress ?? null,
+      model: model ?? null
+    };
+  }
+
+  try {
+    const result = await runInference({
+      providerAddress,
+      systemPrompt:
+        "You are a concise scientific analysis agent. Return a short, cautious summary of the dataset and avoid unsupported claims.",
+      userPrompt: [
+        `Agent: ${plan.agentName}`,
+        `Domain: ${plan.domain}`,
+        `Accepted format: ${plan.acceptedFormat}`,
+        "",
+        "Dataset:",
+        plan.datasetText.slice(0, 6000)
+      ].join("\n"),
+      maxTokens: 256
+    });
+
+    return {
+      mode: "real",
+      providerAddress,
+      model,
+      serviceUrl,
+      chatId: result.chatId,
+      verified: result.verified,
+      summary: result.text,
+      raw: result.raw
+    };
+  } catch (caught) {
+    return {
+      mode: "failed",
+      providerAddress,
+      model,
+      serviceUrl,
+      error: caught instanceof Error ? caught.message : "0G Compute inference failed"
+    };
+  }
 }
 
 function createMessage(
@@ -263,8 +339,21 @@ function extractAnalysis(message: AxlMessage): GenericDemoAnalysisOutput {
   return message.payload as unknown as GenericDemoAnalysisOutput;
 }
 
-function extractReview(message: AxlMessage): GenericDemoCriticOutput {
-  return message.payload as unknown as GenericDemoCriticOutput;
+function extractReview(message: AxlMessage): GenericDemoCriticOutput & { zeroGCompute?: unknown } {
+  return message.payload as unknown as GenericDemoCriticOutput & { zeroGCompute?: unknown };
+}
+
+function extractZeroGCompute(message: AxlMessage): Record<string, unknown> {
+  const review = extractReview(message);
+  return isRecord(review.zeroGCompute) ? review.zeroGCompute : { mode: "simulated" };
+}
+
+function isRealZeroGComputeResult(value: Record<string, unknown>): boolean {
+  return value.mode === "real";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function extractAgent(message: AxlMessage, agentId: string): AgentListing | undefined {

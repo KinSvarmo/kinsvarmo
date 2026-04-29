@@ -3,7 +3,7 @@
 import { use, useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAccount, useConnect, useBalance } from "wagmi";
+import { useAccount, useConnect, useBalance, useChainId, useSwitchChain } from "wagmi";
 import { seededAgents, type AnalysisJob, type AgentListing } from "@kingsvarmo/shared";
 import { useINFTToken, useTokenMetadata, usePurchaseUsage } from "@/hooks/useINFTRegistry";
 import { fetchJson } from "@/lib/api";
@@ -20,7 +20,7 @@ const STEP_LABELS: Record<Step, string> = {
   upload: "Upload Dataset",
   validate: "Validate File",
   review: "Review Cost",
-  confirm: "Authorize & Run",
+  confirm: "0G Authorization",
 };
 
 const ALLOWED_FORMATS = ["csv", "json", "tsv", "txt"];
@@ -42,6 +42,25 @@ type FileCheck = {
   detail?: string;
 };
 
+type ZeroGStatus = {
+  configured: boolean;
+  chain: { configured: boolean; missing: string[] };
+  storage: { configured: boolean; missing: string[] };
+  compute: {
+    configured: boolean;
+    providerAddress?: string;
+    model?: string;
+    hasSecret: boolean;
+    missing: string[];
+  };
+  contracts: {
+    configured: boolean;
+    agentRegistryAddress?: string;
+    usageAuthorizationAddress?: string;
+    missing: string[];
+  };
+};
+
 function CheckIcon({ status }: { status: FileCheck["status"] }) {
   if (status === "pass")
     return (
@@ -59,6 +78,21 @@ function CheckIcon({ status }: { status: FileCheck["status"] }) {
     <svg className="check-icon pending" viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" />
     </svg>
+  );
+}
+
+function ReadinessRow({ label, ready, missing = [] }: { label: string; ready?: boolean | undefined; missing?: string[] | undefined }) {
+  const value = ready
+    ? "configured"
+    : missing.length > 0
+      ? `missing ${missing.length}`
+      : "checking";
+
+  return (
+    <div className="job-detail-row">
+      <span>{label}</span>
+      <strong style={{ color: ready ? "var(--teal)" : "var(--amber)" }}>{value}</strong>
+    </div>
   );
 }
 
@@ -160,6 +194,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const [confirmed, setConfirmed] = useState(false);
   const [apiJobId, setApiJobId] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [zeroGStatus, setZeroGStatus] = useState<ZeroGStatus | null>(null);
   const [isSubmittingJob, setIsSubmittingJob] = useState(false);
   const [isStartingDemoRun, setIsStartingDemoRun] = useState(false);
   const [pendingAnalysisPayload, setPendingAnalysisPayload] = useState<{
@@ -170,6 +205,8 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
 
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
   const { data: balance } = useBalance({ address, chainId: ogTestnet.id });
   const { purchaseUsage, txHash, isPending, isConfirming, isSuccess, error } = usePurchaseUsage();
 
@@ -200,6 +237,30 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
       cancelled = true;
     };
   }, [slug]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadZeroGStatus() {
+      try {
+        const response = await fetchJson<{ zeroG: ZeroGStatus }>("/api/0g/status");
+
+        if (!cancelled) {
+          setZeroGStatus(response.zeroG);
+        }
+      } catch {
+        if (!cancelled) {
+          setZeroGStatus(null);
+        }
+      }
+    }
+
+    void loadZeroGStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!baseAgent && !isTokenIdRoute && isAgentLoaded) {
     return (
@@ -355,9 +416,21 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   };
 
   const handleAuthorize = async () => {
-    if (!isConnected) { connect({ connector: injectedConnector }); return; }
+    if (!isConnected) {
+      connect({ connector: injectedConnector, chainId: ogTestnet.id });
+      return;
+    }
 
     setApiError(null);
+    if (chainId !== ogTestnet.id) {
+      try {
+        await switchChainAsync({ chainId: ogTestnet.id });
+      } catch (caught) {
+        setApiError(caught instanceof Error ? caught.message : "Could not switch wallet to 0G Galileo testnet");
+        return;
+      }
+    }
+
     if (!tokenIdBigInt) {
       setApiError("This agent does not have an onchain token ID yet.");
       return;
@@ -706,7 +779,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                 >
                   {isSubmittingJob ? "Starting local workflow..." : "Start Local AXL Run"}
                 </button>
-                <button className="btn btn-secondary" onClick={() => setStep("confirm")}>Wallet Flow →</button>
+                <button className="btn btn-secondary" onClick={() => setStep("confirm")}>Authorize with 0G Wallet →</button>
               </div>
             </div>
           )}
@@ -714,7 +787,21 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
           {/* ── Step: Confirm ── */}
           {step === "confirm" && (
             <div>
-              <h2 style={{ fontSize: "1.2rem", marginBottom: 20 }}>Authorize & Run</h2>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: 20 }}>Authorize with 0G Wallet</h2>
+              <div className="glass" style={{ padding: 20, marginBottom: 20 }}>
+                <p className="eyebrow" style={{ marginBottom: 12, fontSize: "0.7rem" }}>0G integration readiness</p>
+                <div className="job-detail-list">
+                  <ReadinessRow label="0G Chain" ready={zeroGStatus?.chain.configured} missing={zeroGStatus?.chain.missing} />
+                  <ReadinessRow label="0G Storage" ready={zeroGStatus?.storage.configured} missing={zeroGStatus?.storage.missing} />
+                  <ReadinessRow label="0G Compute" ready={zeroGStatus?.compute.configured} missing={zeroGStatus?.compute.missing} />
+                  <ReadinessRow label="Contracts" ready={zeroGStatus?.contracts.configured} missing={zeroGStatus?.contracts.missing} />
+                </div>
+                {zeroGStatus?.compute.providerAddress && (
+                  <p className="font-mono" style={{ color: "var(--text-3)", fontSize: "0.72rem", marginTop: 12, wordBreak: "break-all" }}>
+                    Provider: {zeroGStatus.compute.providerAddress}
+                  </p>
+                )}
+              </div>
 
               {!isConnected ? (
                 <div>
@@ -722,9 +809,9 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0 }}>
                       <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                     </svg>
-                    Connect your wallet to authorize payment of {totalOG} OG and start the analysis.
+                    Connect your wallet to authorize this agent run on 0G. This is the real path for payment, usage rights, and provenance.
                   </div>
-                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injectedConnector })}>
+                  <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injectedConnector, chainId: ogTestnet.id })}>
                     Connect Wallet
                   </button>
                 </div>
@@ -761,7 +848,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                   </div>
 
                   <div className="callout callout-info" style={{ marginBottom: 20 }}>
-                    This sends a usage purchase to the iNFT, then starts the LD50 workflow once the transaction confirms.
+                    This sends a 0G usage authorization to the iNFT contract, then starts the AXL + KeeperHub workflow once the transaction confirms.
                   </div>
 
                   {error && (
@@ -783,7 +870,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                       disabled={isPending || isConfirming || isSubmittingJob}
                       onClick={handleAuthorize}
                     >
-                      {isSubmittingJob ? "Starting AXL workflow…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming…" : `Authorize & Run — ${totalOG} OG`}
+                      {isSubmittingJob ? "Starting AXL workflow…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : `Authorize with 0G Wallet — ${totalOG} OG`}
                     </button>
                   </div>
                 </div>

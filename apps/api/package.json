@@ -15,6 +15,7 @@
     "@kingsvarmo/axl-client": "workspace:*",
     "@kingsvarmo/keeperhub": "workspace:*",
     "@kingsvarmo/shared": "workspace:*",
+    "@kingsvarmo/zero-g": "workspace:*",
     "fastify": "^5.0.0",
     "zod": "^3.23.8"
   },

@@ -24,7 +24,7 @@
     "demo:check": "tsx scripts/demo/check-local-demo.ts",
     "build": "pnpm -r build",
     "test": "node --import tsx --test scripts/tests/**/*.test.ts",
-    "test:axl": "node --import tsx --test scripts/tests/axl/**/*.test.ts",
+    "test:axl": "node --import tsx --test scripts/tests/axl/*.test.ts",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint"
   },
@@ -33,6 +33,7 @@
     "@kingsvarmo/axl-client": "workspace:*",
     "@kingsvarmo/keeperhub": "workspace:*",
     "@kingsvarmo/shared": "workspace:*",
+    "@kingsvarmo/zero-g": "workspace:*",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4"
   }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { AxlClient } from "@kingsvarmo/axl-client";
 import type { KeeperHubClient } from "@kingsvarmo/keeperhub";
 import { supportedInputFormats, type AgentListing, type JobCreateInput } from "@kingsvarmo/shared";
+import { getZeroGIntegrationStatus } from "@kingsvarmo/zero-g";
 import { createBackendAxlClient } from "./integrations/axl";
 import { createBackendKeeperHubClient } from "./integrations/keeperhub";
 import { createInMemoryJobStore, type JobStore } from "./state/store";
@@ -57,7 +58,12 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     ok: true,
     service: "kingsvarmo-api",
     axl: await axlClient.health(),
-    keeperHub: await keeperHubClient.health()
+    keeperHub: await keeperHubClient.health(),
+    zeroG: getZeroGIntegrationStatus()
+  }));
+
+  server.get("/api/0g/status", async () => ({
+    zeroG: getZeroGIntegrationStatus()
   }));
 
   server.get("/api/agents", async () => ({

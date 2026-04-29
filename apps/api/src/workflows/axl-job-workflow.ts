@@ -115,6 +115,13 @@ export function createJobCreatedMessage(job: AnalysisJob): AxlMessage {
 }
 
 export function createResultFromReportMessage(message: AxlMessage): AnalysisResult {
+  const structuredJson = isRecord(message.payload.structuredJson)
+    ? {
+        ...message.payload.structuredJson,
+        sourceMessageId: message.id
+      }
+    : message.payload;
+
   return {
     id: `result_${message.jobId}`,
     jobId: message.jobId,
@@ -126,7 +133,7 @@ export function createResultFromReportMessage(message: AxlMessage): AnalysisResu
     keyFindings: Array.isArray(message.payload.keyFindings)
       ? message.payload.keyFindings.filter((finding): finding is string => typeof finding === "string")
       : [],
-    structuredJson: message.payload,
+    structuredJson,
     explanation:
       "This result was produced from AXL-delivered reporter output and stored by the API workflow consumer.",
     provenanceId:
@@ -140,4 +147,8 @@ export function createResultFromReportMessage(message: AxlMessage): AnalysisResu
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

@@ -16,6 +16,35 @@ export interface ZeroGClient {
   buildExplorerUrl(contractAddress: string, tokenId?: string): string;
 }
 
+export interface ZeroGIntegrationStatus {
+  configured: boolean;
+  chain: {
+    configured: boolean;
+    rpcUrl?: string | undefined;
+    explorerUrl?: string | undefined;
+    missing: string[];
+  };
+  storage: {
+    configured: boolean;
+    endpoint?: string | undefined;
+    missing: string[];
+  };
+  compute: {
+    configured: boolean;
+    providerAddress?: string | undefined;
+    serviceUrl?: string | undefined;
+    model?: string | undefined;
+    hasSecret: boolean;
+    missing: string[];
+  };
+  contracts: {
+    configured: boolean;
+    agentRegistryAddress?: string | undefined;
+    usageAuthorizationAddress?: string | undefined;
+    missing: string[];
+  };
+}
+
 export interface ZeroGInferenceProvider {
   provider: string;
   name: string;
@@ -43,6 +72,67 @@ export interface ZeroGLedgerInfo {
   configured: boolean;
   balance: string;
   providerFunds: Record<string, string>;
+}
+
+export function getZeroGIntegrationStatus(
+  env: NodeJS.ProcessEnv = process.env
+): ZeroGIntegrationStatus {
+  const rpcUrl = env.ZERO_G_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
+  const explorerUrl = env.ZERO_G_EXPLORER_URL ?? "https://chainscan-galileo.0g.ai";
+  const providerAddress = env.ZERO_G_COMPUTE_PROVIDER_ADDRESS ?? env.ZERO_G_INFERENCE_PROVIDER;
+  const agentRegistryAddress = env.ZERO_G_AGENT_REGISTRY_ADDRESS ?? env.NEXT_PUBLIC_INFT_REGISTRY_ADDRESS;
+  const usageAuthorizationAddress =
+    env.ZERO_G_USAGE_AUTHORIZATION_ADDRESS ?? agentRegistryAddress;
+  const chainMissing: string[] = [];
+  const storageMissing = missingEnv(env, ["ZERO_G_STORAGE_ENDPOINT"]);
+  const computeMissing = [
+    ...(providerAddress ? [] : ["ZERO_G_INFERENCE_PROVIDER"]),
+    ...(env.ZERO_G_COMPUTE_SERVICE_URL ? [] : ["ZERO_G_COMPUTE_SERVICE_URL"]),
+    ...(env.ZERO_G_COMPUTE_API_SECRET ? [] : ["ZERO_G_COMPUTE_API_SECRET"]),
+    ...(env.ZERO_G_COMPUTE_MODEL ? [] : ["ZERO_G_COMPUTE_MODEL"]),
+  ];
+  const contractMissing = [
+    ...(agentRegistryAddress ? [] : ["NEXT_PUBLIC_INFT_REGISTRY_ADDRESS"]),
+    ...(usageAuthorizationAddress ? [] : ["ZERO_G_USAGE_AUTHORIZATION_ADDRESS"]),
+  ];
+
+  return {
+    configured:
+      chainMissing.length === 0 &&
+      storageMissing.length === 0 &&
+      computeMissing.length === 0 &&
+      contractMissing.length === 0,
+    chain: {
+      configured: chainMissing.length === 0,
+      rpcUrl,
+      explorerUrl,
+      missing: chainMissing,
+    },
+    storage: {
+      configured: storageMissing.length === 0,
+      endpoint: env.ZERO_G_STORAGE_ENDPOINT,
+      missing: storageMissing,
+    },
+    compute: {
+      configured: computeMissing.length === 0,
+      providerAddress,
+      serviceUrl: env.ZERO_G_COMPUTE_SERVICE_URL,
+      model: env.ZERO_G_COMPUTE_MODEL,
+      hasSecret: Boolean(env.ZERO_G_COMPUTE_API_SECRET),
+      missing: computeMissing,
+    },
+    contracts: {
+      configured: contractMissing.length === 0,
+      agentRegistryAddress,
+      usageAuthorizationAddress,
+      missing: contractMissing,
+    },
+  };
+}
+
+export function buildZeroGExplorerUrl(path: string, env: NodeJS.ProcessEnv = process.env): string {
+  const explorerUrl = env.ZERO_G_EXPLORER_URL ?? "https://chainscan-galileo.0g.ai";
+  return `${explorerUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 }
 
 export async function listInferenceProviders(): Promise<ZeroGInferenceProvider[]> {
@@ -123,6 +213,10 @@ export async function getLedgerInfo(): Promise<ZeroGLedgerInfo> {
     balance: "0",
     providerFunds: {},
   };
+}
+
+function missingEnv(env: NodeJS.ProcessEnv, names: string[]): string[] {
+  return names.filter((name) => !env[name]);
 }
 
 export {

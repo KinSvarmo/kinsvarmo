@@ -78,7 +78,7 @@ export function Nav() {
               {truncate(address!)}
             </button>
           ) : (
-            <button onClick={() => connect({ connector: injectedConnector })} className="btn btn-primary btn-sm">
+            <button onClick={() => connect({ connector: injectedConnector, chainId: ogTestnet.id })} className="btn btn-primary btn-sm">
               Connect Wallet
             </button>
           )}

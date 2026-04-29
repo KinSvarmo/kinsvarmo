@@ -69,10 +69,34 @@ export function browserInjected(): CreateConnectorFn<EthereumProvider> {
         throw new Error(`Chain ${chainId} is not configured`);
       }
 
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: numberToHex(chainId) }]
-      });
+      const hexChainId = numberToHex(chainId);
+
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: hexChainId }]
+        });
+      } catch (caught) {
+        if (!isUnknownChainError(caught)) {
+          throw caught;
+        }
+
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: hexChainId,
+              chainName: chain.name,
+              nativeCurrency: chain.nativeCurrency,
+              rpcUrls: chain.rpcUrls.default.http,
+              blockExplorerUrls: chain.blockExplorers?.default
+                ? [chain.blockExplorers.default.url]
+                : undefined,
+            }
+          ]
+        });
+      }
+
       config.emitter.emit("change", { chainId });
 
       return chain;
@@ -104,4 +128,13 @@ function normalizeAccounts(accounts: unknown): readonly Address[] {
   return accounts
     .filter((account): account is string => typeof account === "string")
     .map((account) => getAddress(account));
+}
+
+function isUnknownChainError(caught: unknown): boolean {
+  return (
+    typeof caught === "object" &&
+    caught !== null &&
+    "code" in caught &&
+    (caught as { code?: unknown }).code === 4902
+  );
 }

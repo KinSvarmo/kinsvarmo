@@ -20,6 +20,9 @@ importers:
       '@kingsvarmo/shared':
         specifier: workspace:*
         version: link:packages/shared
+      '@kingsvarmo/zero-g':
+        specifier: workspace:*
+        version: link:packages/zero-g
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
@@ -41,6 +44,9 @@ importers:
       '@kingsvarmo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@kingsvarmo/zero-g':
+        specifier: workspace:*
+        version: link:../../packages/zero-g
       fastify:
         specifier: ^5.0.0
         version: 5.8.5
@@ -1515,7 +1521,7 @@ packages:
 
   glob@7.1.7:
     resolution: {integrity: sha512-OvD9ENzPLbegENnYP5UUfJIirTg4+XwMWGaQfQTY0JenxNvvIKP3U3/tAQSPIu/lHxXYSZmpXlUHeqAIdKzBLQ==}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+    deprecated: Glob versions prior to v9 are no longer supported
 
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}

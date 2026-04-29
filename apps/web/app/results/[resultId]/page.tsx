@@ -71,6 +71,10 @@ export default function ResultPage({ params }: { params: Promise<{ resultId: str
     );
   }
 
+  const zeroGCompute = getZeroGCompute(result);
+  const zeroGMode = typeof zeroGCompute?.mode === "string" ? zeroGCompute.mode : "unknown";
+  const isRealZeroGCompute = zeroGMode === "real";
+
   return (
     <div className="container" style={{ paddingTop: 48, paddingBottom: 80 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 32, fontSize: "0.82rem", color: "var(--text-3)" }}>
@@ -101,6 +105,15 @@ export default function ResultPage({ params }: { params: Promise<{ resultId: str
             </div>
           </section>
 
+          <section style={{ marginBottom: 28 }}>
+            <h2 style={{ fontSize: "1.1rem", marginBottom: 12 }}>0G Compute Proof</h2>
+            <div className={isRealZeroGCompute ? "callout callout-success" : "callout callout-warn"}>
+              {isRealZeroGCompute
+                ? "This report includes a real 0G Compute inference response from the configured provider."
+                : `This report did not use real 0G Compute. Mode: ${zeroGMode}.`}
+            </div>
+          </section>
+
           <section>
             <h2 style={{ fontSize: "1.1rem", marginBottom: 12 }}>Structured Output</h2>
             <pre className="result-json">
@@ -117,6 +130,17 @@ export default function ResultPage({ params }: { params: Promise<{ resultId: str
               <Detail label="Job ID" value={result.jobId} monospace />
               <Detail label="Provenance" value={result.provenanceId} monospace />
               <Detail label="Completed" value={formatDate(result.completedAt)} />
+            </div>
+          </section>
+
+          <section className="glass" style={{ padding: 22 }}>
+            <p className="eyebrow" style={{ marginBottom: 12 }}>0G Compute</p>
+            <div className="job-detail-list">
+              <Detail label="Mode" value={zeroGMode} />
+              <Detail label="Provider" value={stringValue(zeroGCompute?.providerAddress, "none")} monospace />
+              <Detail label="Model" value={stringValue(zeroGCompute?.model, "none")} />
+              <Detail label="Chat ID" value={stringValue(zeroGCompute?.chatId, "none")} monospace />
+              <Detail label="Verified" value={String(zeroGCompute?.verified ?? "not reported")} />
             </div>
           </section>
 
@@ -141,6 +165,27 @@ export default function ResultPage({ params }: { params: Promise<{ resultId: str
       </div>
     </div>
   );
+}
+
+function getZeroGCompute(result: AnalysisResult): Record<string, unknown> | null {
+  const direct = getRecord(result.structuredJson.zeroGCompute);
+
+  if (direct) {
+    return direct;
+  }
+
+  const nestedStructuredJson = getRecord(result.structuredJson.structuredJson);
+  return nestedStructuredJson ? getRecord(nestedStructuredJson.zeroGCompute) : null;
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function Detail({ label, value, monospace = false }: { label: string; value: string; monospace?: boolean }) {

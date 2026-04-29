@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { INFTRegistryABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { ogTestnet } from "@/lib/chain";
 import { downloadBrowserFile } from "@kingsvarmo/zero-g";
-import type { Address } from "viem";
+import { numberToHex, type Address } from "viem";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 const ZERO_G_STORAGE = {
@@ -25,6 +26,10 @@ type TokenMetadataJSON = {
   priceIn0G?: string;
   runtimeSeconds?: string;
   formats?: string[];
+};
+
+type EthereumProvider = {
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
 };
 
 function parse0GUri(uri: string): { rootHash: string; symmetricKey?: string } | null {
@@ -205,11 +210,14 @@ export function useMintINFT() {
       throw new Error("INFT registry address is not configured. Set NEXT_PUBLIC_INFT_REGISTRY_ADDRESS.");
     }
 
+    await ensure0GWalletChain();
+
     return writeContractAsync({
       address: CONTRACT_ADDRESSES.INFTRegistry,
       abi: INFTRegistryABI,
       functionName: "mint",
       args: [to, encryptedURI, metadataHash, metadata],
+      chainId: ogTestnet.id,
     });
   }
 
@@ -229,14 +237,84 @@ export function usePurchaseUsage() {
       throw new Error("INFT registry address is not configured. Set NEXT_PUBLIC_INFT_REGISTRY_ADDRESS.");
     }
 
+    await ensure0GWalletChain();
+
     return writeContractAsync({
       address: CONTRACT_ADDRESSES.INFTRegistry,
       abi: INFTRegistryABI,
       functionName: "purchaseUsage",
       args: [tokenId, permissions],
       value,
+      chainId: ogTestnet.id,
     });
   }
 
   return { purchaseUsage, txHash, isPending, isConfirming, isSuccess, error };
+}
+
+async function ensure0GWalletChain(): Promise<void> {
+  const provider = getInjectedProvider();
+  const targetChainId = numberToHex(ogTestnet.id);
+  const currentChainId = await provider.request({ method: "eth_chainId" });
+
+  if (currentChainId === targetChainId) {
+    return;
+  }
+
+  try {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: targetChainId }],
+    });
+  } catch (caught) {
+    if (!isUnknownChainError(caught)) {
+      throw caught;
+    }
+
+    await provider.request({
+      method: "wallet_addEthereumChain",
+      params: [
+        {
+          chainId: targetChainId,
+          chainName: ogTestnet.name,
+          nativeCurrency: ogTestnet.nativeCurrency,
+          rpcUrls: ogTestnet.rpcUrls.default.http,
+          blockExplorerUrls: [ogTestnet.blockExplorers.default.url],
+        },
+      ],
+    });
+  }
+
+  await waitForChain(provider, targetChainId);
+}
+
+function getInjectedProvider(): EthereumProvider {
+  if (typeof window === "undefined" || !window.ethereum) {
+    throw new Error("No injected wallet was found");
+  }
+
+  return window.ethereum as EthereumProvider;
+}
+
+async function waitForChain(provider: EthereumProvider, targetChainId: string): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const currentChainId = await provider.request({ method: "eth_chainId" });
+
+    if (currentChainId === targetChainId) {
+      return;
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+  }
+
+  throw new Error("MetaMask did not switch to 0G Galileo testnet. Please switch networks manually and try again.");
+}
+
+function isUnknownChainError(caught: unknown): boolean {
+  return (
+    typeof caught === "object" &&
+    caught !== null &&
+    "code" in caught &&
+    (caught as { code?: unknown }).code === 4902
+  );
 }
