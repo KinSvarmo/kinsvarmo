@@ -23,6 +23,7 @@ type TokenMetadataJSON = {
   intelligenceReference?: string;
   storageReference?: string;
   metadataURI?: string;
+  promptTemplate?: string;
   priceIn0G?: string;
   runtimeSeconds?: string;
   formats?: string[];

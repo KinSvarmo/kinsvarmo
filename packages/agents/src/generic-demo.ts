@@ -5,6 +5,7 @@ export interface GenericDemoPlanOutput {
   agentId: string;
   agentName: string;
   domain: string;
+  agentPrompt?: string;
   route: "generic-demo";
   acceptedFormat: string;
   datasetText: string;
@@ -16,6 +17,7 @@ export interface GenericDemoAnalysisOutput {
   agentId: string;
   agentName: string;
   domain: string;
+  agentPrompt?: string;
   route: "generic-demo";
   observations: string[];
   metrics: {
@@ -32,6 +34,7 @@ export interface GenericDemoCriticOutput {
   agentId: string;
   agentName: string;
   domain: string;
+  agentPrompt?: string;
   route: "generic-demo";
   confidence: number;
   warnings: string[];
@@ -49,6 +52,7 @@ export interface GenericDemoReportOutput {
     agentId: string;
     agentName: string;
     domain: string;
+    agentPrompt?: string;
     metrics: GenericDemoAnalysisOutput["metrics"];
     warnings: string[];
   };
@@ -98,6 +102,7 @@ export function createGenericDemoPlan(input: {
     agentId: input.job.agentId,
     agentName: input.agent?.name ?? input.job.agentId,
     domain,
+    ...(input.agent?.promptTemplate ? { agentPrompt: input.agent.promptTemplate } : {}),
     route: "generic-demo",
     acceptedFormat: inferFormat(input.job.filename),
     datasetText: input.datasetText ?? readDatasetText(input.job),
@@ -125,6 +130,7 @@ export function runGenericDemoAnalysis(plan: GenericDemoPlanOutput): GenericDemo
     agentId: plan.agentId,
     agentName: plan.agentName,
     domain: plan.domain,
+    ...(plan.agentPrompt ? { agentPrompt: plan.agentPrompt } : {}),
     route: plan.route,
     observations: [
       `${profile.recordCount} records were parsed for ${plan.domain} review`,
@@ -159,6 +165,7 @@ export function reviewGenericDemoAnalysis(analysis: GenericDemoAnalysisOutput): 
     agentId: analysis.agentId,
     agentName: analysis.agentName,
     domain: analysis.domain,
+    ...(analysis.agentPrompt ? { agentPrompt: analysis.agentPrompt } : {}),
     route: analysis.route,
     confidence: Math.min(0.91, Math.max(0.52, analysis.metrics.processingScore)),
     warnings,
@@ -189,6 +196,7 @@ export function createGenericDemoReport(review: GenericDemoCriticOutput): Generi
       agentId: review.agentId,
       agentName: review.agentName,
       domain: review.domain,
+      ...(review.agentPrompt ? { agentPrompt: review.agentPrompt } : {}),
       metrics: review.metrics,
       warnings: review.warnings
     },

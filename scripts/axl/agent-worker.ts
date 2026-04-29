@@ -236,12 +236,12 @@ async function runZeroGComputeIfConfigured(plan: GenericDemoPlanOutput): Promise
   try {
     const result = await runInference({
       providerAddress,
-      systemPrompt:
-        "You are a concise scientific analysis agent. Return a short, cautious summary of the dataset and avoid unsupported claims.",
+      systemPrompt: buildComputeSystemPrompt(plan),
       userPrompt: [
         `Agent: ${plan.agentName}`,
         `Domain: ${plan.domain}`,
         `Accepted format: ${plan.acceptedFormat}`,
+        ...(plan.agentPrompt ? ["", "Agent instructions from iNFT metadata:", plan.agentPrompt] : []),
         "",
         "Dataset:",
         plan.datasetText.slice(0, 6000)
@@ -268,6 +268,15 @@ async function runZeroGComputeIfConfigured(plan: GenericDemoPlanOutput): Promise
       error: caught instanceof Error ? caught.message : "0G Compute inference failed"
     };
   }
+}
+
+function buildComputeSystemPrompt(plan: GenericDemoPlanOutput): string {
+  const fallback =
+    "You are a concise scientific analysis agent. Follow the agent instructions, return a cautious summary of the dataset, and avoid unsupported claims.";
+
+  return plan.agentPrompt?.trim()
+    ? `${fallback}\n\nAgent-specific instructions:\n${plan.agentPrompt.trim()}`
+    : fallback;
 }
 
 function createMessage(

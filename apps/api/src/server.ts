@@ -31,6 +31,7 @@ const createAgentSchema = z.object({
   runtimeEstimateSeconds: z.number().int().positive().default(90),
   previewOutput: z.string().min(1),
   expectedOutput: z.string().optional(),
+  promptTemplate: z.string().optional(),
   privacyNotes: z.string().optional(),
   intelligenceReference: z.string().optional(),
   storageReference: z.string().optional()
@@ -111,6 +112,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
       expectedOutput:
         parsed.data.expectedOutput ??
         "A deterministic local report with confidence, findings, and provenance.",
+      ...(parsed.data.promptTemplate ? { promptTemplate: parsed.data.promptTemplate } : {}),
       privacyNotes:
         parsed.data.privacyNotes ??
         "Local demo jobs keep inputs scoped to the API process memory.",

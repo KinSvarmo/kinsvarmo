@@ -17,6 +17,7 @@ export interface AgentListing {
   status: AgentStatus;
   previewOutput: string;
   expectedOutput: string;
+  promptTemplate?: string;
   privacyNotes: string;
   intelligenceReference?: string;
   storageReference?: string;

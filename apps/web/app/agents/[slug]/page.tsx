@@ -108,6 +108,13 @@ function normalizeReportPreview(primary?: string, fallback?: string): string {
   return meaningful ?? "A structured analysis report with summary, key findings, confidence, and provenance.";
 }
 
+function buildRunAgentSnapshot(agent: AgentListing, promptTemplate: string): AgentListing {
+  return {
+    ...agent,
+    promptTemplate
+  };
+}
+
 function StepBar({ current }: { current: Step }) {
   const idx = STEP_ORDER.indexOf(current);
   return (
@@ -159,6 +166,10 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   );
   const resolvedIntelligenceRef = tokenMetadata.data?.intelligenceReference || onchainMetadata?.[5] || baseAgent?.intelligenceReference || "—";
   const resolvedStorageRef = tokenMetadata.data?.storageReference || onchainMetadata?.[6] || baseAgent?.storageReference || "—";
+  const resolvedPromptTemplate =
+    tokenMetadata.data?.promptTemplate ||
+    baseAgent?.promptTemplate ||
+    "You are a careful scientific analysis agent. Summarize the uploaded dataset, explain uncertainty, and avoid unsupported claims.";
   const resolvedPrice = tokenMetadata.data?.priceIn0G || baseAgent?.priceIn0G || "0";
   const resolvedRuntimeSeconds = tokenMetadata.data?.runtimeSeconds
     ? Number(tokenMetadata.data.runtimeSeconds)
@@ -181,6 +192,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
     status: "published",
     previewOutput: resolvedPreview,
     expectedOutput: resolvedPreview,
+    promptTemplate: resolvedPromptTemplate,
     privacyNotes: baseAgent?.privacyNotes || "Onchain token metadata",
     createdAt: baseAgent?.createdAt || "1970-01-01T00:00:00.000Z",
     ...(resolvedIntelligenceRef !== "—" ? { intelligenceReference: resolvedIntelligenceRef } : {}),
@@ -369,10 +381,11 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
           userWallet: address ?? "local-demo-user",
           filename: file.name,
           uploadReference: `local://uploads/${Date.now()}-${file.name}`,
-          inputMetadata: {
-            source: "web-local-upload",
-            analysisType: `${agent.domain}-demo`,
-            datasetText,
+              inputMetadata: {
+                source: "web-local-upload",
+                analysisType: `${agent.domain}-demo`,
+                agentSnapshot: buildRunAgentSnapshot(agent, resolvedPromptTemplate),
+                datasetText,
             totalOG,
             storageFee,
             protocolFee,
@@ -451,10 +464,11 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
             userWallet: address ?? "0x0000000000000000000000000000000000000001",
             filename: payload.filename,
             uploadReference: datasetRef,
-            inputMetadata: {
-              source: "web-run-page",
-              analysisType: "dl50",
-              csvText: payload.csvText,
+              inputMetadata: {
+                source: "web-run-page",
+                analysisType: "dl50",
+                agentSnapshot: buildRunAgentSnapshot(agent, resolvedPromptTemplate),
+                csvText: payload.csvText,
               totalOG,
               storageFee,
               protocolFee,
@@ -488,7 +502,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
     return () => {
       cancelled = true;
     };
-  }, [isSuccess, pendingAnalysisPayload, address, agent.id, datasetRef, totalOG, storageFee, protocolFee, file?.size]);
+  }, [isSuccess, pendingAnalysisPayload, address, agent, resolvedPromptTemplate, datasetRef, totalOG, storageFee, protocolFee, file?.size]);
 
   // Success redirect (once contracts live + real txHash)
   useEffect(() => {

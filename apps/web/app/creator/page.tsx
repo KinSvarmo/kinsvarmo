@@ -250,6 +250,7 @@ export default function CreatorPage() {
           previewOutput:
             form.previewOutput || "Deterministic local report with confidence and provenance.",
           expectedOutput: "A deterministic report with confidence, key findings, and structured JSON.",
+          promptTemplate: form.promptTemplate,
           privacyNotes: "Local demo listing. Jobs are scoped to the running API process."
         })
       });
