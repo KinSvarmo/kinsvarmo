@@ -319,6 +319,17 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
 
           <section className="glass" style={{ padding: 22 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+              <p className="eyebrow">0G Execution Proof</p>
+            </div>
+            <div className="job-detail-list">
+              <Detail label="Compute Mode" value="inference" />
+              <Detail label="Provider" value={process.env.NEXT_PUBLIC_0G_INFERENCE_PROVIDER || "0x9815..."} monospace />
+              <Detail label="Model" value="Qwen2.5-0.5B-Instruct" />
+            </div>
+          </section>
+
+          <section className="glass" style={{ padding: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
               <p className="eyebrow">KeeperHub</p>
               {keeperHubRun && <span className={keeperHubBadge(keeperHubRun.state)}>{keeperHubRun.state}</span>}
             </div>
@@ -405,6 +416,12 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
                 <div className="job-detail-list" style={{ marginBottom: 16 }}>
                   <Detail label="Confidence" value={`${Math.round(result.confidence * 100)}%`} />
                   <Detail label="Provenance" value={result.provenanceId} monospace />
+                  {result.structuredJson.verified === true && (
+                     <Detail label="0G Verified" value="✓ Valid TEE Signature" />
+                  )}
+                  {result.structuredJson.verified === false && (
+                     <Detail label="0G Verified" value="✗ Invalid Signature" />
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <Link href={`/results/${result.id}`} className="btn btn-primary btn-sm">Open Result Page</Link>

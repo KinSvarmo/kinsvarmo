@@ -8,12 +8,13 @@ import { useMintINFT } from "@/hooks/useINFTRegistry";
 import { use0GStorage } from "@/hooks/use0GStorage";
 import { injectedConnector } from "@/lib/wagmi";
 
-type Step = "basics" | "config" | "dataset" | "review";
-const STEP_ORDER: Step[] = ["basics", "config", "dataset", "review"];
+type Step = "basics" | "config" | "compute" | "dataset" | "review";
+const STEP_ORDER: Step[] = ["basics", "config", "compute", "dataset", "review"];
 const STEP_LABELS: Record<Step, string> = {
   basics: "Agent Info",
   config: "Pricing & Config",
-  dataset: "Upload Dataset",
+  compute: "0G Compute",
+  dataset: "Upload Intelligence",
   review: "Review & Mint",
 };
 
@@ -70,7 +71,30 @@ export default function CreatorPage() {
     priceIn0G: "0.25",
     runtimeSeconds: "90",
     previewOutput: "",
+    // 0G Compute fields
+    computeMode: "inference" as "inference" | "fine-tuned-lora",
+    providerAddress: "",
+    baseModel: "Qwen2.5-0.5B-Instruct",
+    promptTemplate: "You are an expert scientific data analyzer. Summarize the provided data.",
   });
+
+  const [providers, setProviders] = useState<any[]>([]);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+
+  const fetchProviders = async () => {
+    setIsLoadingProviders(true);
+    try {
+      const res = await fetch("/api/0g/providers");
+      const data = await res.json();
+      if (data.providers) {
+        setProviders(data.providers);
+      }
+    } catch (err) {
+      console.error("Failed to fetch providers", err);
+    } finally {
+      setIsLoadingProviders(false);
+    }
+  };
 
   const set = (key: keyof typeof form, val: string | string[]) =>
     setForm((prev) => ({ ...prev, [key]: val }));
@@ -116,6 +140,10 @@ export default function CreatorPage() {
         formats: form.formats,
         priceIn0G: form.priceIn0G,
         runtimeSeconds: form.runtimeSeconds,
+        computeMode: form.computeMode,
+        providerAddress: form.providerAddress,
+        baseModel: form.baseModel,
+        promptTemplate: form.promptTemplate,
       },
       null,
       2,
@@ -124,6 +152,7 @@ export default function CreatorPage() {
   const canProceed: Record<Step, boolean> = {
     basics: Boolean(form.name && form.description && form.domain && form.creatorName),
     config: form.formats.length > 0 && Boolean(form.priceIn0G),
+    compute: Boolean(form.providerAddress && form.baseModel),
     dataset: Boolean(datasetFile),
     review: isConnected,
   };
@@ -206,7 +235,7 @@ export default function CreatorPage() {
                 {txHash.slice(0, 20)}…
               </a>
             </div>
-            <div><span style={{ color: "var(--text-3)" }}>Dataset ref: </span>{datasetURI}</div>
+            <div><span style={{ color: "var(--text-3)" }}>Intelligence ref: </span>{datasetURI}</div>
             <div><span style={{ color: "var(--text-3)" }}>Intelligence ref: </span>{intelligenceReference || "Generated after upload"}</div>
             {metadataURI && <div><span style={{ color: "var(--text-3)" }}>Metadata URI: </span>{metadataURI}</div>}
           </div>
@@ -228,7 +257,7 @@ export default function CreatorPage() {
           Mint your scientific iNFT
         </h1>
         <p style={{ color: "var(--text-2)", maxWidth: 560, lineHeight: 1.6 }}>
-          Publish your analysis workflow as a private ERC-7857 iNFT on 0G. Your dataset stays encrypted —
+          Publish your analysis workflow as a private ERC-7857 iNFT on 0G. Your intelligence stays encrypted —
           users pay to run it, you earn per execution.
         </p>
       </div>
@@ -312,7 +341,7 @@ export default function CreatorPage() {
                 </div>
 
                 <div className="callout callout-info">
-                  Intelligence reference is auto-generated from the uploaded dataset package after you store it on 0G.
+                  Intelligence reference is auto-generated from the uploaded intelligence package after you store it on 0G.
                 </div>
               </div>
             </div>
@@ -350,7 +379,7 @@ export default function CreatorPage() {
                 </div>
 
                 <div className="field">
-                  <label className="label">Supported dataset formats *</label>
+                  <label className="label">Supported input formats *</label>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                     {FORMATS.map((f) => (
                       <button
@@ -384,14 +413,99 @@ export default function CreatorPage() {
             </div>
           )}
 
-          {/* Step 3: Upload Dataset */}
+          {/* Step: Compute */}
+          {step === "compute" && (
+            <div className="glass-lg" style={{ padding: 32 }}>
+              <h2 style={{ fontSize: "1.1rem", marginBottom: 24 }}>0G Compute Integration</h2>
+              <p style={{ color: "var(--text-2)", marginBottom: 20, fontSize: "0.9rem" }}>
+                Select an inference provider from the 0G network and configure your base model and prompt.
+              </p>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                <div className="field">
+                  <label className="label">Compute Mode</label>
+                  <select
+                    className="select"
+                    value={form.computeMode}
+                    onChange={(e) => set("computeMode", e.target.value as "inference" | "fine-tuned-lora")}
+                  >
+                    <option value="inference">Inference (Fastest)</option>
+                    <option value="fine-tuned-lora" disabled>Fine-tuned LoRA (Coming Soon)</option>
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="label">
+                    Provider Address *
+                    {providers.length === 0 && (
+                      <button 
+                        className="btn btn-ghost btn-sm" 
+                        onClick={fetchProviders} 
+                        disabled={isLoadingProviders}
+                        style={{ marginLeft: 12, padding: "2px 8px", fontSize: "0.75rem" }}
+                      >
+                        {isLoadingProviders ? "Fetching..." : "Fetch live providers"}
+                      </button>
+                    )}
+                  </label>
+                  
+                  {providers.length > 0 ? (
+                    <select
+                      className="select"
+                      value={form.providerAddress}
+                      onChange={(e) => set("providerAddress", e.target.value)}
+                    >
+                      <option value="">Select a provider...</option>
+                      {providers.map((p) => (
+                        <option key={p.provider} value={p.provider}>
+                          {p.name || p.provider.slice(0, 10) + "..."} — {p.model}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="input"
+                      placeholder="e.g. 0x..."
+                      value={form.providerAddress}
+                      onChange={(e) => set("providerAddress", e.target.value)}
+                    />
+                  )}
+                  <span className="input-hint">The 0G compute provider that will run this agent</span>
+                </div>
+
+                <div className="field">
+                  <label className="label">Base Model *</label>
+                  <input
+                    className="input"
+                    placeholder="e.g. Qwen2.5-0.5B-Instruct"
+                    value={form.baseModel}
+                    onChange={(e) => set("baseModel", e.target.value)}
+                  />
+                </div>
+
+                <div className="field">
+                  <label className="label">System Prompt Template *</label>
+                  <textarea
+                    className="textarea"
+                    placeholder="You are a scientific data analyzer..."
+                    value={form.promptTemplate}
+                    onChange={(e) => set("promptTemplate", e.target.value)}
+                    rows={4}
+                  />
+                  <span className="input-hint">This prompt will be combined with the user's input data at runtime</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Upload Intelligence */}
           {step === "dataset" && (
             <div className="glass-lg" style={{ padding: 32 }}>
-              <h2 style={{ fontSize: "1.1rem", marginBottom: 8 }}>Upload Training Dataset</h2>
+              <h2 style={{ fontSize: "1.1rem", marginBottom: 8 }}>Upload Agent Intelligence</h2>
               <p style={{ color: "var(--text-2)", fontSize: "0.88rem", marginBottom: 24, lineHeight: 1.6 }}>
-                Your dataset will be <strong style={{ color: "var(--teal)" }}>encrypted using AES-256-GCM</strong> before
+                Your intelligence data will be <strong style={{ color: "var(--teal)" }}>encrypted using AES-256-GCM</strong> before
                 being stored on 0G Storage. Only authorized executions via the iNFT contract can access it.
-                Users never see your raw training data.
+                Users never see your raw intelligence data.
               </p>
 
               <div
@@ -415,7 +529,7 @@ export default function CreatorPage() {
                   </>
                 ) : (
                   <>
-                    <p style={{ fontWeight: 600, marginBottom: 6 }}>Drop your training dataset here</p>
+                    <p style={{ fontWeight: 600, marginBottom: 6 }}>Drop your intelligence data here</p>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-3)" }}>
                       .jsonl only
                     </p>
@@ -437,11 +551,11 @@ export default function CreatorPage() {
                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: 1 }}>
                   <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
                 </svg>
-                <span>Your IP is protected. The dataset is encrypted client-side before upload. The decryption key is sealed to the iNFT and only accessible during authorized TEE execution.</span>
+                <span>Your IP is protected. The intelligence data is encrypted client-side before upload. The decryption key is sealed to the iNFT and only accessible during authorized TEE execution.</span>
               </div>
 
               <div className="callout callout-info" style={{ marginTop: 16 }}>
-                First store the dataset on 0G Storage. After that succeeds, we’ll move to the mint step.
+                First store the intelligence on 0G Storage. After that succeeds, we’ll move to the mint step.
               </div>
 
               <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -450,7 +564,7 @@ export default function CreatorPage() {
                   disabled={!datasetFile || isUploading || isPending || isConfirming}
                   onClick={handleUpload}
                 >
-                  {isStoreFlowRunning || isUploading ? "Uploading dataset to 0G Storage…" : "Store Dataset on 0G"}
+                  {isStoreFlowRunning || isUploading ? "Uploading intelligence to 0G Storage…" : "Store Intelligence on 0G"}
                 </button>
                 <button
                   className="btn btn-ghost"
@@ -465,7 +579,7 @@ export default function CreatorPage() {
               <div className="glass" style={{ padding: 16, marginTop: 16 }}>
                 <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>Storage flow</p>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "var(--text-2)", flexWrap: "wrap" }}>
-                  {["Your dataset", "AES-256 encrypt", "0G Storage", "URI in iNFT"].map((step, i, arr) => (
+                  {["Your intelligence", "AES-256 encrypt", "0G Storage", "URI in iNFT"].map((step, i, arr) => (
                     <>
                       <span key={step} style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", background: "var(--surface)" }}>{step}</span>
                       {i < arr.length - 1 && <span key={`arrow-${i}`} style={{ color: "var(--teal)" }}>→</span>}
@@ -489,8 +603,10 @@ export default function CreatorPage() {
                   { label: "Creator", value: form.creatorName },
                   { label: "Price", value: `${form.priceIn0G} OG / run`, color: "var(--teal)" },
                   { label: "Formats", value: form.formats.map((f) => `.${f}`).join(", ") },
-                  { label: "Dataset", value: datasetFile?.name ?? "—" },
+                  { label: "Intelligence", value: datasetFile?.name ?? "—" },
                   { label: "Runtime", value: `~${Math.round(parseInt(form.runtimeSeconds) / 60)} min` },
+                  { label: "Provider", value: form.providerAddress.slice(0, 16) + "..." },
+                  { label: "Model", value: form.baseModel },
                 ].map(({ label, value, color }) => (
                   <div className="cost-row" key={label} style={{ fontSize: "0.88rem" }}>
                     <span className="label">{label}</span>
@@ -502,13 +618,13 @@ export default function CreatorPage() {
               {/* Metadata hash preview */}
               <div className="tx-panel" style={{ marginBottom: 20 }}>
                 <div style={{ marginBottom: 4 }}><span style={{ color: "var(--text-3)" }}>Metadata hash (keccak256): </span>{metadataHash}</div>
-                <div><span style={{ color: "var(--text-3)" }}>Dataset URI: </span>{datasetURI || "Will be generated upon upload"}</div>
+                <div><span style={{ color: "var(--text-3)" }}>Intelligence URI: </span>{datasetURI || "Will be generated upon upload"}</div>
                 <div><span style={{ color: "var(--text-3)" }}>Intelligence ref: </span>{intelligenceReference || "Will be generated upon upload"}</div>
                 <div><span style={{ color: "var(--text-3)" }}>Metadata URI: </span>{metadataURI || "Will be generated upon upload"}</div>
               </div>
 
               <div className="callout callout-info" style={{ marginBottom: 20 }}>
-                Your dataset is already stored on 0G Storage. Minting will only record the encrypted URI on-chain.
+                Your intelligence is already stored on 0G Storage. Minting will only record the encrypted URI on-chain.
               </div>
 
               {(mintError || uploadError) && (
@@ -531,7 +647,7 @@ export default function CreatorPage() {
                   </div>
                   {!datasetURI && (
                     <div className="callout callout-warn" style={{ marginBottom: 16 }}>
-                      Store the dataset first before minting.
+                      Store the intelligence first before minting.
                     </div>
                   )}
                   <button
@@ -574,7 +690,7 @@ export default function CreatorPage() {
             <p className="eyebrow" style={{ marginBottom: 14, fontSize: "0.7rem" }}>What gets minted</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {[
-                { icon: "🔐", title: "Encrypted dataset", desc: "Your training data on 0G Storage" },
+                { icon: "🔐", title: "Encrypted intelligence", desc: "Your intelligence data on 0G Storage" },
                 { icon: "📜", title: "ERC-7857 iNFT", desc: "Ownership token on 0G Chain" },
                 { icon: "💰", title: "Revenue logic", desc: "Pay-per-run in OG token" },
                 { icon: "🛡️", title: "Access control", desc: "TEE-gated execution rights" },

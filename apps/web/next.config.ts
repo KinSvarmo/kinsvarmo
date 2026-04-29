@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@kingsvarmo/shared"],
+  transpilePackages: ["@kingsvarmo/shared", "@0glabs/0g-serving-broker"],
   webpack: (config, { isServer, webpack }) => {
     config.resolve.fallback = { 
       fs: false, 

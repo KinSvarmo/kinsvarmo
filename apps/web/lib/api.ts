@@ -1,5 +1,6 @@
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:4000";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? 
+  (typeof window !== "undefined" ? "" : "http://localhost:3000");
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
