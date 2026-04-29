@@ -230,6 +230,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
     filename: string;
   } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const submitRef = useRef(false);
 
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
@@ -243,10 +244,13 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
 
     async function loadAgent() {
       try {
-        const response = await fetchJson<{ agent: AgentListing }>(`/api/agents/${slug}`);
+        const response = await fetch(`/api/agents/${slug}`);
+        if (!response.ok) throw new Error("Agent not found");
+        
+        const data = await response.json() as { agent: AgentListing };
 
         if (!cancelled) {
-          setApiAgent(response.agent);
+          setApiAgent(data.agent);
         }
       } catch {
         if (!cancelled) {
@@ -402,7 +406,8 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
         method: "POST"
       });
 
-      router.push(`/jobs/${job.id}`);
+      setApiJobId(job.id);
+      setConfirmed(true);
     } catch (caught) {
       setApiError(caught instanceof Error ? caught.message : "Could not start the local analysis job");
     } finally {
@@ -452,11 +457,11 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   };
 
   useEffect(() => {
-    if (!isSuccess || !pendingAnalysisPayload) {
+    if (!isSuccess || !pendingAnalysisPayload || submitRef.current) {
       return;
     }
 
-    let cancelled = false;
+    submitRef.current = true;
     const payload = pendingAnalysisPayload;
 
     async function submitAnalysisJob() {
@@ -487,28 +492,18 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
           method: "POST"
         });
 
-        if (!cancelled) {
-          setApiJobId(job.id);
-          setConfirmed(true);
-        }
+        setApiJobId(job.id);
+        setConfirmed(true);
       } catch (caught) {
-        if (!cancelled) {
-          setApiError(caught instanceof Error ? caught.message : "Could not create the analysis job");
-        }
+        setApiError(caught instanceof Error ? caught.message : "Could not create the analysis job");
       } finally {
-        if (!cancelled) {
-          setIsSubmittingJob(false);
-          setPendingAnalysisPayload(null);
-        }
+        setIsSubmittingJob(false);
+        setPendingAnalysisPayload(null);
       }
     }
 
     void submitAnalysisJob();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isSuccess, pendingAnalysisPayload, address, agent, resolvedPromptTemplate, datasetRef, totalOG, storageFee, protocolFee, file?.size]);
+  }, [isSuccess, pendingAnalysisPayload, address, agent, resolvedPromptTemplate, datasetRef, totalOG, storageFee, protocolFee, file?.size, addJobToHistory]);
 
   // Success redirect (once contracts live + real txHash)
   useEffect(() => {
