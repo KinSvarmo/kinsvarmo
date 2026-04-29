@@ -157,7 +157,7 @@ export default function ResultPage({ params }: { params: Promise<{ resultId: str
                 Back to Job Status
               </Link>
               <Link href="/agents/1" className="btn btn-ghost btn-sm">
-                Rerun Demo Agent
+                Run another analysis
               </Link>
             </div>
           </section>

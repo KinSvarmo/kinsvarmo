@@ -19,8 +19,8 @@ const STEP_ORDER: Step[] = ["upload", "validate", "review", "confirm"];
 const STEP_LABELS: Record<Step, string> = {
   upload: "Upload Dataset",
   validate: "Validate File",
-  review: "Review Cost",
-  confirm: "0G Authorization",
+  review: "Review Run",
+  confirm: "Start Analysis",
 };
 
 const ALLOWED_FORMATS = ["csv", "json", "tsv", "txt"];
@@ -96,6 +96,18 @@ function ReadinessRow({ label, ready, missing = [] }: { label: string; ready?: b
   );
 }
 
+function normalizeReportPreview(primary?: string, fallback?: string): string {
+  const candidates = [primary, fallback].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
+  const meaningful = candidates.find((value) => {
+    const trimmed = value.trim();
+    return trimmed.length >= 16 && !/^(a+|test|demo|placeholder)$/i.test(trimmed);
+  });
+
+  return meaningful ?? "A structured analysis report with summary, key findings, confidence, and provenance.";
+}
+
 function StepBar({ current }: { current: Step }) {
   const idx = STEP_ORDER.indexOf(current);
   return (
@@ -141,7 +153,10 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const resolvedCreatorName = tokenMetadata.data?.creatorName || onchainMetadata?.[3] || baseAgent?.creatorName || "Onchain creator";
   const resolvedName = tokenMetadata.data?.name || onchainMetadata?.[0] || baseAgent?.name || `iNFT #${tokenId}`;
   const resolvedDescription = tokenMetadata.data?.description || onchainMetadata?.[1] || baseAgent?.description || "Readable metadata is still loading from the token URI.";
-  const resolvedPreview = tokenMetadata.data?.previewOutput || baseAgent?.previewOutput || "No preview output available yet.";
+  const resolvedPreview = normalizeReportPreview(
+    tokenMetadata.data?.previewOutput,
+    baseAgent?.previewOutput
+  );
   const resolvedIntelligenceRef = tokenMetadata.data?.intelligenceReference || onchainMetadata?.[5] || baseAgent?.intelligenceReference || "—";
   const resolvedStorageRef = tokenMetadata.data?.storageReference || onchainMetadata?.[6] || baseAgent?.storageReference || "—";
   const resolvedPrice = tokenMetadata.data?.priceIn0G || baseAgent?.priceIn0G || "0";
@@ -196,7 +211,6 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const [apiError, setApiError] = useState<string | null>(null);
   const [zeroGStatus, setZeroGStatus] = useState<ZeroGStatus | null>(null);
   const [isSubmittingJob, setIsSubmittingJob] = useState(false);
-  const [isStartingDemoRun, setIsStartingDemoRun] = useState(false);
   const [pendingAnalysisPayload, setPendingAnalysisPayload] = useState<{
     csvText: string;
     filename: string;
@@ -337,42 +351,6 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const storageFee = 0.02;
   const protocolFee = +(basePrice * 0.05).toFixed(3);
   const totalOG = +(basePrice + storageFee + protocolFee).toFixed(3);
-
-  const handleDemoRun = async () => {
-    if (isStartingDemoRun || !isExecutableDemoAgent) {
-      return;
-    }
-
-    setApiError(null);
-    setIsStartingDemoRun(true);
-
-    try {
-      const { job } = await fetchJson<{ job: AnalysisJob }>("/api/jobs", {
-        method: "POST",
-        body: JSON.stringify({
-          agentId: agent.id,
-          userWallet: address ?? "0x0000000000000000000000000000000000000001",
-          filename: `${agent.slug}-demo.csv`,
-          uploadReference: `demo://${agent.slug}.csv`,
-          inputMetadata: {
-            source: "ui-demo-run",
-            analysisType: `${agent.domain}-demo`,
-            mode: "local-axl-plus-real-keeperhub"
-          }
-        })
-      });
-
-      await fetchJson<{ job: AnalysisJob | null }>(`/api/jobs/${job.id}/start`, {
-        method: "POST"
-      });
-
-      router.push(`/jobs/${job.id}`);
-    } catch (caught) {
-      setApiError(caught instanceof Error ? caught.message : "Could not start the demo workflow");
-    } finally {
-      setIsStartingDemoRun(false);
-    }
-  };
 
   const handleLocalUploadRun = async () => {
     if (isSubmittingJob || !file) {
@@ -602,23 +580,8 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
               </p>
               <p style={{ color: "var(--text-2)", lineHeight: 1.6 }}>{displayDescription}</p>
               <div className="callout callout-info" style={{ marginTop: 12 }}>
-                <strong>Preview output:</strong> {displayPreview}
+                <strong>Expected report:</strong> {displayPreview}
               </div>
-              {isExecutableDemoAgent && (
-                <div className="glass" style={{ marginTop: 16, padding: 18, background: "var(--bg-raised)" }}>
-                  <p className="eyebrow" style={{ marginBottom: 8 }}>AXL + KeeperHub test path</p>
-                  <p style={{ color: "var(--text-2)", fontSize: "0.86rem", lineHeight: 1.6, marginBottom: 14 }}>
-                    Start a local demo job without wallet payment. This creates an API job, triggers KeeperHub, and sends the request through AXL worker nodes.
-                  </p>
-                  <button
-                    className="btn btn-primary"
-                    disabled={isStartingDemoRun}
-                    onClick={handleDemoRun}
-                  >
-                    {isStartingDemoRun ? "Starting Demo Workflow..." : "Run Demo Analysis"}
-                  </button>
-                </div>
-              )}
               {apiError && (
                 <div className="callout callout-error" style={{ marginTop: 12 }}>
                   {apiError}
@@ -720,7 +683,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                   disabled={!allPass}
                   onClick={() => setStep("review")}
                 >
-                  Proceed to Cost Review →
+                  Review analysis →
                 </button>
               </div>
             </div>
@@ -729,34 +692,37 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
           {/* ── Step: Review ── */}
           {step === "review" && (
             <div>
-              <h2 style={{ fontSize: "1.2rem", marginBottom: 20 }}>Review cost</h2>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: 8 }}>Review analysis</h2>
+              <p style={{ color: "var(--text-2)", fontSize: "0.9rem", lineHeight: 1.6, marginBottom: 20 }}>
+                Check the file, authorization amount, and execution path before starting the agent.
+              </p>
 
               <div className="glass" style={{ padding: 24, marginBottom: 20 }}>
                 <div className="cost-row">
-                  <span className="label">Analysis fee</span>
-                  <span className="value">{agent.priceIn0G} OG</span>
+                  <span className="label">Wallet authorization</span>
+                  <span className="value">{formatEther(usageFeeValue)} OG</span>
                 </div>
                 <div className="cost-row">
-                  <span className="label">0G Storage (dataset)</span>
-                  <span className="value">{storageFee} OG</span>
+                  <span className="label">Dataset storage</span>
+                  <span className="value">0G Storage configured</span>
                 </div>
                 <div className="cost-row">
-                  <span className="label">Protocol fee (5%)</span>
-                  <span className="value">{protocolFee} OG</span>
+                  <span className="label">Compute</span>
+                  <span className="value">0G Compute provider</span>
                 </div>
                 <div className="cost-row cost-total" style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-                  <span className="label font-bold">Total</span>
-                  <span className="value">{totalOG} OG</span>
+                  <span className="label font-bold">Charged in wallet now</span>
+                  <span className="value">{formatEther(usageFeeValue)} OG</span>
                 </div>
               </div>
 
               <div className="glass" style={{ padding: 20, marginBottom: 24 }}>
-                <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>What you&apos;re paying for</p>
+                <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>What happens next</p>
                 <ul style={{ fontSize: "0.85rem", color: "var(--text-2)", lineHeight: 1.7, paddingLeft: 16 }}>
-                  <li>Temporary execution rights on the encrypted iNFT intelligence</li>
-                  <li>Dataset storage on 0G Storage (pinned for 30 days)</li>
-                  <li>Planner → Analyzer → Critic → Reporter workflow via Gensyn AXL</li>
-                  <li>Structured report with confidence scores and 0G provenance hash</li>
+                  <li>Your wallet authorizes one run of this agent on 0G.</li>
+                  <li>The backend creates a KeeperHub execution record for the job.</li>
+                  <li>Planner, Analyzer, Critic, and Reporter exchange messages through AXL.</li>
+                  <li>The Analyzer calls 0G Compute and the final report shows the compute proof.</li>
                 </ul>
               </div>
 
@@ -772,14 +738,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
 
               <div style={{ display: "flex", gap: 12 }}>
                 <button className="btn btn-ghost" onClick={() => setStep("validate")}>← Back</button>
-                <button
-                  className="btn btn-primary"
-                  disabled={!file || isSubmittingJob}
-                  onClick={handleLocalUploadRun}
-                >
-                  {isSubmittingJob ? "Starting local workflow..." : "Start Local AXL Run"}
-                </button>
-                <button className="btn btn-secondary" onClick={() => setStep("confirm")}>Authorize with 0G Wallet →</button>
+                <button className="btn btn-primary" onClick={() => setStep("confirm")}>Continue to wallet →</button>
               </div>
             </div>
           )}
@@ -787,7 +746,10 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
           {/* ── Step: Confirm ── */}
           {step === "confirm" && (
             <div>
-              <h2 style={{ fontSize: "1.2rem", marginBottom: 20 }}>Authorize with 0G Wallet</h2>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: 8 }}>Start analysis</h2>
+              <p style={{ color: "var(--text-2)", fontSize: "0.9rem", lineHeight: 1.6, marginBottom: 20 }}>
+                Confirm the usage authorization in your wallet. After the transaction confirms, the analysis starts automatically.
+              </p>
               <div className="glass" style={{ padding: 20, marginBottom: 20 }}>
                 <p className="eyebrow" style={{ marginBottom: 12, fontSize: "0.7rem" }}>0G integration readiness</p>
                 <div className="job-detail-list">
@@ -809,7 +771,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0 }}>
                       <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                     </svg>
-                    Connect your wallet to authorize this agent run on 0G. This is the real path for payment, usage rights, and provenance.
+                    Connect your wallet to authorize this agent run on 0G.
                   </div>
                   <button className="btn btn-primary btn-lg" onClick={() => connect({ connector: injectedConnector, chainId: ogTestnet.id })}>
                     Connect Wallet
@@ -830,8 +792,8 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                       </span>
                     </div>
                     <div className="cost-row">
-                      <span className="label">You&apos;ll pay</span>
-                      <span className="value" style={{ color: "var(--teal)", fontSize: "1.1rem" }}>{totalOG} OG</span>
+                      <span className="label">Wallet authorization</span>
+                      <span className="value" style={{ color: "var(--teal)", fontSize: "1.1rem" }}>{formatEther(usageFeeValue)} OG</span>
                     </div>
                     <div className="cost-row">
                       <span className="label">Contract</span>
@@ -848,7 +810,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                   </div>
 
                   <div className="callout callout-info" style={{ marginBottom: 20 }}>
-                    This sends a 0G usage authorization to the iNFT contract, then starts the AXL + KeeperHub workflow once the transaction confirms.
+                    This authorizes one use of the iNFT agent, then starts the KeeperHub-tracked AXL workflow after the transaction confirms.
                   </div>
 
                   {error && (
@@ -870,7 +832,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                       disabled={isPending || isConfirming || isSubmittingJob}
                       onClick={handleAuthorize}
                     >
-                      {isSubmittingJob ? "Starting AXL workflow…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : `Authorize with 0G Wallet — ${totalOG} OG`}
+                      {isSubmittingJob ? "Starting analysis…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : `Authorize and start — ${formatEther(usageFeeValue)} OG`}
                     </button>
                   </div>
                 </div>

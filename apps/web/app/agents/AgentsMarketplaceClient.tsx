@@ -50,7 +50,7 @@ export function AgentsMarketplaceClient() {
         <p className="eyebrow" style={{ marginBottom: 8 }}>Marketplace</p>
         <h1 style={{ fontSize: "clamp(2rem, 5vw, 3rem)", marginBottom: 16 }}>Scientific Agents</h1>
         <p style={{ color: "var(--text-2)", maxWidth: 540, lineHeight: 1.6 }}>
-          Browse and run private analysis agents. Local demo runs are routed through AXL and tracked by KeeperHub.
+          Browse private analysis agents, authorize a run, and receive a report with AXL, KeeperHub, and 0G Compute provenance.
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export function AgentsMarketplaceClient() {
                       Published
                     </span>
                     <span className="badge badge-blue" style={{ fontSize: "0.68rem" }}>
-                      Local executable
+                      Ready to run
                     </span>
                     {agent.supportedFormats.map((f) => (
                       <span key={f} className="badge badge-muted" style={{ fontSize: "0.68rem" }}>
@@ -146,7 +146,7 @@ export function AgentsMarketplaceClient() {
               </div>
 
               <div className="btn btn-primary" style={{ textAlign: "center", width: "100%" }}>
-                View Agent →
+                Open Agent →
               </div>
             </article>
           </Link>

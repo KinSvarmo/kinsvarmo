@@ -376,14 +376,14 @@ export default function CreatorPage() {
                 </div>
 
                 <div className="field">
-                  <label className="label">Preview Output</label>
+                  <label className="label">Expected report</label>
                   <input
                     className="input"
                     placeholder="e.g. Predicted alkaloid-like compound families with confidence notes."
                     value={form.previewOutput}
                     onChange={(e) => set("previewOutput", e.target.value)}
                   />
-                  <span className="input-hint">Shown on the marketplace listing as a sample result description</span>
+                  <span className="input-hint">A short description of the report users should expect after a run.</span>
                 </div>
 
                 <div className="callout callout-info">
