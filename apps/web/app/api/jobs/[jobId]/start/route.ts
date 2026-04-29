@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jobsStore, messagesStore, keeperHubStore, resultsStore } from "@/lib/store";
-import { runInference } from "@kingsvarmo/zero-g";
+import { runInference } from "../../../../../../../packages/zero-g/src/compute";
 
 export async function POST(req: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
