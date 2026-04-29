@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAccount, useConnect, useBalance, useChainId, useSwitchChain } from "wagmi";
 import { seededAgents, type AnalysisJob, type AgentListing } from "@kingsvarmo/shared";
 import { useINFTToken, useTokenMetadata, usePurchaseUsage } from "@/hooks/useINFTRegistry";
+import { useJobHistory } from "@/hooks/useJobHistory";
 import { fetchJson } from "@/lib/api";
 import { ogTestnet } from "@/lib/chain";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
@@ -137,6 +138,7 @@ function StepBar({ current }: { current: Step }) {
 export default function AgentRunPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
+  const { addJobToHistory } = useJobHistory();
   const seededAgent = seededAgents.find((candidate) => candidate.slug === slug || candidate.onchainTokenId === slug);
   const [apiAgent, setApiAgent] = useState<AgentListing | null>(null);
   const [isAgentLoaded, setIsAgentLoaded] = useState(false);
@@ -394,6 +396,8 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
         })
       });
 
+      addJobToHistory(job);
+
       await fetchJson<{ job: AnalysisJob | null }>(`/api/jobs/${job.id}/start`, {
         method: "POST"
       });
@@ -476,6 +480,8 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
             }
           })
         });
+
+        addJobToHistory(job);
 
         await fetchJson<{ job: AnalysisJob | null }>(`/api/jobs/${job.id}/start`, {
           method: "POST"
