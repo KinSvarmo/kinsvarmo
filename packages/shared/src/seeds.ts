@@ -125,5 +125,29 @@ export const seededAgents: AgentListing[] = [
     intelligenceReference: "0g://placeholder/intelligence/reproducibility-checker",
     storageReference: "0g://placeholder/metadata/reproducibility-checker",
     createdAt: "2026-04-24T00:40:00.000Z"
+  },
+  {
+    id: "agent_classroom_pulse_reviewer",
+    name: "Classroom Pulse Reviewer",
+    slug: "classroom-pulse-reviewer",
+    creatorName: "KinSvarmo Education",
+    creatorWallet: "0x0000000000000000000000000000000000000006",
+    description:
+      "Reviews student dose-response submissions and returns a structured confidence report for classroom comparison.",
+    longDescription:
+      "A classroom-oriented analysis agent for dose-response lab datasets. Each student submits a CSV and receives an individual report. Teachers compare confidence scores and key findings across the class through the results table.",
+    domain: "research-ops",
+    supportedFormats: ["csv"],
+    priceIn0G: "0.10",
+    runtimeEstimateSeconds: 60,
+    status: "published",
+    previewOutput: "Confidence score, estimated LD50, and structured findings for each submission.",
+    expectedOutput:
+      "A structured report with dose-response observations, confidence, and provenance for classroom review.",
+    privacyNotes:
+      "Each submission is scoped to the individual job and is not shared across listings.",
+    intelligenceReference: "0g://placeholder/intelligence/classroom-pulse",
+    storageReference: "0g://placeholder/metadata/classroom-pulse",
+    createdAt: "2026-04-24T00:50:00.000Z"
   }
 ];
