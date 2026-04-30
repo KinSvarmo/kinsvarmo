@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccount, useConnect } from "wagmi";
@@ -646,10 +646,10 @@ export default function CreatorPage() {
                 <p className="eyebrow" style={{ marginBottom: 10, fontSize: "0.7rem" }}>Storage flow</p>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "var(--text-2)", flexWrap: "wrap" }}>
                   {["Your intelligence", "AES-256 encrypt", "0G Storage", "URI in iNFT"].map((step, i, arr) => (
-                    <>
-                      <span key={step} style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", background: "var(--surface)" }}>{step}</span>
-                      {i < arr.length - 1 && <span key={`arrow-${i}`} style={{ color: "var(--teal)" }}>→</span>}
-                    </>
+                    <Fragment key={step}>
+                      <span style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", background: "var(--surface)" }}>{step}</span>
+                      {i < arr.length - 1 && <span style={{ color: "var(--teal)" }}>→</span>}
+                    </Fragment>
                   ))}
                 </div>
               </div>
