@@ -28,6 +28,7 @@ export function Nav() {
     { href: "/agents",    label: "Browse Agents" },
     { href: "/classroom", label: "Classroom" },
     { href: "/creator",   label: "Create Agent" },
+    { href: "/jobs",      label: "Jobs" },
     { href: "/status",    label: "System" },
   ];
 
@@ -56,8 +57,8 @@ export function Nav() {
               borderRadius: "var(--radius-sm)",
               fontSize: "0.88rem",
               fontWeight: 500,
-              color: pathname === href ? "var(--teal)" : "var(--text-2)",
-              background: pathname === href ? "var(--teal-dim)" : "transparent",
+              color: pathname === href || pathname.startsWith(`${href}/`) ? "var(--teal)" : "var(--text-2)",
+              background: pathname === href || pathname.startsWith(`${href}/`) ? "var(--teal-dim)" : "transparent",
               transition: "all 0.15s",
             }}>
               {label}

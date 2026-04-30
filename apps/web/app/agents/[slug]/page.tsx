@@ -150,7 +150,14 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
   const token = useINFTToken(tokenIdBigInt);
   const onchainMetadata = token.agentMetadata.data;
   const onchainTokenURI = token.tokenURI.data;
-  const tokenMetadata = useTokenMetadata(onchainTokenURI ? String(onchainTokenURI) : undefined);
+  const onchainMetadataURI = onchainMetadata?.[7];
+  const readableMetadataURI =
+    typeof onchainMetadataURI === "string" && onchainMetadataURI.length > 0
+      ? onchainMetadataURI
+      : onchainTokenURI
+        ? String(onchainTokenURI)
+        : undefined;
+  const tokenMetadata = useTokenMetadata(readableMetadataURI);
   const tokenId = tokenIdBigInt?.toString() ?? baseAgent?.onchainTokenId ?? slug;
   const contractAddress = baseAgent?.contractAddress ?? CONTRACT_ADDRESSES.INFTRegistry;
 

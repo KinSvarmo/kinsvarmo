@@ -1,10 +1,17 @@
 import { Redis } from "@upstash/redis";
 import type { AnalysisJob, AnalysisResult, AxlMessage, ClassroomAssignment, ClassroomSubmission } from "@kingsvarmo/shared";
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-});
+type StoreClient = {
+  get<T>(key: string): Promise<T | null>;
+  set<T>(key: string, value: T, options?: { ex?: number }): Promise<void>;
+};
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __ksWebMemoryStore: Map<string, unknown> | undefined;
+}
+
+const redis: StoreClient = createStoreClient();
 
 const TTL = 60 * 60 * 24;
 
@@ -70,4 +77,39 @@ export async function getSubmission(id: string): Promise<ClassroomSubmission | n
 
 export async function setSubmission(id: string, submission: ClassroomSubmission): Promise<void> {
   await redis.set(`classroom:submission:${id}`, submission, { ex: TTL });
+}
+
+function createStoreClient(): StoreClient {
+  const url = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+
+  if (url && token) {
+    const client = new Redis({ url, token });
+
+    return {
+      async get<T>(key: string): Promise<T | null> {
+        return client.get<T>(key);
+      },
+      async set<T>(key: string, value: T, options?: { ex?: number }): Promise<void> {
+        if (typeof options?.ex === "number") {
+          await client.set(key, value, { ex: options.ex });
+          return;
+        }
+
+        await client.set(key, value);
+      }
+    };
+  }
+
+  globalThis.__ksWebMemoryStore ??= new Map<string, unknown>();
+  const memory = globalThis.__ksWebMemoryStore;
+
+  return {
+    async get<T>(key: string): Promise<T | null> {
+      return (memory.get(key) as T | undefined) ?? null;
+    },
+    async set<T>(key: string, value: T): Promise<void> {
+      memory.set(key, value);
+    }
+  };
 }
