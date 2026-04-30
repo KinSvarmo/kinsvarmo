@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { keeperHubStore } from "@/lib/store";
+import { getKeeperHubRun } from "@/lib/store";
 
-export async function GET(req: Request, { params }: { params: Promise<{ jobId: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
-  const run = keeperHubStore.get(jobId);
-  
+  const run = await getKeeperHubRun(jobId);
+
   if (!run) {
     return NextResponse.json({ error: "KeeperHub run not found" }, { status: 404 });
   }
-  
+
   return NextResponse.json({ run });
 }

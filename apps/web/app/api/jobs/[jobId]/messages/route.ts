@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { messagesStore } from "@/lib/store";
+import { getMessages } from "@/lib/store";
 
-export async function GET(req: Request, { params }: { params: Promise<{ jobId: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
-  const messages = messagesStore.get(jobId) || [];
-  
+  const messages = await getMessages(jobId);
   return NextResponse.json({ messages });
 }

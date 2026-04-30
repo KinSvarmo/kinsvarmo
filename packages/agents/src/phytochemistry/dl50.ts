@@ -65,6 +65,65 @@ export interface Dl50ReportOutput {
   provenanceId: string;
 }
 
+export interface Dl50InferenceRequest {
+  jobId: string;
+  datasetText: string;
+  filename?: string;
+  agentName?: string;
+  promptTemplate?: string;
+}
+
+export interface Dl50InferenceResult {
+  summary: string;
+  confidence: number;
+  keyFindings: string[];
+  structuredJson: Record<string, unknown>;
+  model?: string;
+}
+
+export function buildDl50InferenceMessages(input: Dl50InferenceRequest): { system: string; user: string } {
+  return {
+    system:
+      input.promptTemplate ??
+      "You are a careful scientific data analyst. Review dose-response CSV data and return concise JSON.",
+    user: [
+      `Job ID: ${input.jobId}`,
+      `Agent: ${input.agentName ?? "DL50 analysis agent"}`,
+      `Filename: ${input.filename ?? "dataset.csv"}`,
+      "",
+      "Analyze the dataset and respond only with JSON shaped as:",
+      JSON.stringify({
+        summary: "short result summary",
+        confidence: 0.82,
+        keyFindings: ["finding one", "finding two"],
+        structuredJson: {
+          estimatedDl50: 0,
+          method: "brief method",
+          warnings: ["warning if any"]
+        }
+      }),
+      "",
+      "Dataset:",
+      input.datasetText
+    ].join("\n")
+  };
+}
+
+export function parseDl50InferenceResponse(content: string): Dl50InferenceResult {
+  const parsed = parseJsonObject(content);
+  const summary = getString(parsed.summary) ?? "0G Compute completed DL50 analysis.";
+  const confidence = clamp(getNumber(parsed.confidence) ?? 0.82, 0, 1);
+  const keyFindings = getStringArray(parsed.keyFindings);
+  const structuredJson = isRecord(parsed.structuredJson) ? parsed.structuredJson : parsed;
+
+  return {
+    summary,
+    confidence,
+    keyFindings: keyFindings.length > 0 ? keyFindings : [`Confidence score: ${confidence.toFixed(2)}`],
+    structuredJson
+  };
+}
+
 export function createDl50Plan(input: {
   job: AnalysisJob;
   datasetText?: string;
@@ -318,4 +377,48 @@ function requireFiniteNumber(value: unknown, field: string): number {
     throw new Error(`Invalid numeric CSV field: ${field}`);
   }
   return parsed;
+}
+
+function parseJsonObject(content: string): Record<string, unknown> {
+  const trimmed = content.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  const candidate = fenced ?? trimmed;
+
+  try {
+    const parsed: unknown = JSON.parse(candidate);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+
+    if (start >= 0 && end > start) {
+      try {
+        const parsed: unknown = JSON.parse(candidate.slice(start, end + 1));
+        return isRecord(parsed) ? parsed : {};
+      } catch {
+        return { summary: candidate };
+      }
+    }
+
+    return { summary: candidate };
+  }
+}
+
+function getString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function getNumber(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

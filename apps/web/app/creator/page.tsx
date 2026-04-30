@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, Fragment } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccount, useConnect } from "wagmi";
@@ -101,6 +101,26 @@ export default function CreatorPage() {
       setIsLoadingProviders(false);
     }
   };
+
+  useEffect(() => {
+    void fetchProviders();
+  }, []);
+
+  useEffect(() => {
+    if (form.providerAddress || providers.length === 0) {
+      return;
+    }
+
+    const provider = providers.find((candidate) => candidate.provider && !candidate.provider.endsWith("0000000000000000000000000000000000000000"));
+
+    if (provider?.provider) {
+      setForm((prev) => ({
+        ...prev,
+        providerAddress: provider.provider,
+        baseModel: provider.model || prev.baseModel
+      }));
+    }
+  }, [form.providerAddress, providers]);
 
   const set = (key: keyof typeof form, val: string | string[]) =>
     setForm((prev) => ({ ...prev, [key]: val }));
