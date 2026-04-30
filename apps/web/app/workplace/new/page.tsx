@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useAccount } from "wagmi";
 import { seededAgents } from "@kingsvarmo/shared";
 import { fetchJson } from "@/lib/api";
-import type { ClassroomAssignment } from "@kingsvarmo/shared";
+import type { WorkplaceAssignment } from "@kingsvarmo/shared";
 
 export default function NewAssignmentPage() {
   const router = useRouter();
@@ -25,8 +25,8 @@ export default function NewAssignmentPage() {
     setError(null);
 
     try {
-      const { assignment } = await fetchJson<{ assignment: ClassroomAssignment }>(
-        "/api/classroom/assignments",
+      const { assignment } = await fetchJson<{ assignment: WorkplaceAssignment }>(
+        "/api/workplace/assignments",
         {
           method: "POST",
           body: JSON.stringify({
@@ -39,38 +39,38 @@ export default function NewAssignmentPage() {
           }),
         }
       );
-      router.push(`/classroom/${assignment.id}`);
+      router.push(`/workplace/${assignment.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create assignment");
+      setError(err instanceof Error ? err.message : "Failed to create task");
       setSubmitting(false);
     }
   }
 
   return (
     <div className="container" style={{ paddingTop: 48, paddingBottom: 80, maxWidth: 640 }}>
-      <p className="eyebrow" style={{ marginBottom: 8 }}>Classroom</p>
-      <h1 style={{ fontSize: "1.8rem", marginBottom: 32 }}>New Assignment</h1>
+      <p className="eyebrow" style={{ marginBottom: 8 }}>Workspaces</p>
+      <h1 style={{ fontSize: "1.8rem", marginBottom: 32 }}>New shared task</h1>
 
       <form onSubmit={handleSubmit}>
         <div className="glass" style={{ padding: 32, display: "flex", flexDirection: "column", gap: 22 }}>
           <div>
-            <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Assignment title</label>
+            <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Task title</label>
             <input
               className="input"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Dose response lab"
+              placeholder="e.g. Dose response review"
               required
             />
           </div>
 
           <div>
-            <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Class name</label>
+            <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Group name</label>
             <input
               className="input"
               value={className}
               onChange={(e) => setClassName(e.target.value)}
-              placeholder="e.g. CHEM 301"
+              placeholder="e.g. Research team, cohort, client batch"
               required
             />
           </div>
@@ -90,12 +90,12 @@ export default function NewAssignmentPage() {
           </div>
 
           <div>
-            <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Instructions for students</label>
+            <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Instructions for submitters</label>
             <textarea
               className="input"
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Upload your CSV and compare confidence scores across the class."
+              placeholder="Upload a CSV and compare confidence scores across submissions."
               rows={3}
               style={{ resize: "vertical" }}
             />
@@ -116,7 +116,7 @@ export default function NewAssignmentPage() {
           )}
 
           <button type="submit" className="btn btn-primary" disabled={submitting}>
-            {submitting ? "Creating…" : "Create Assignment"}
+            {submitting ? "Creating…" : "Create task"}
           </button>
         </div>
       </form>

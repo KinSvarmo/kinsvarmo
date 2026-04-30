@@ -14,10 +14,10 @@ const actions = [
     label: "Create agent",
   },
   {
-    title: "Classroom",
-    description: "Create assignments and collect student submissions.",
-    href: "/classroom",
-    label: "Open classroom",
+    title: "Workspaces",
+    description: "Create shared analysis tasks and collect dataset submissions.",
+    href: "/workplace",
+    label: "Open workspaces",
   },
   {
     title: "My jobs",
@@ -40,7 +40,7 @@ export default function HomePage() {
         <p className="eyebrow" style={{ marginBottom: 10 }}>KinSvarmo App</p>
         <h1 style={{ fontSize: "2rem", marginBottom: 10 }}>Start a workflow</h1>
         <p style={{ color: "var(--text-2)", maxWidth: 680, lineHeight: 1.6 }}>
-          Choose an agent, mint a new one, manage classroom assignments, check jobs, or inspect the local demo stack.
+          Choose an agent, mint a new one, manage shared workflows, check jobs, or inspect the local demo stack.
         </p>
       </section>
 

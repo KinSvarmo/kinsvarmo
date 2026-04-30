@@ -3,7 +3,7 @@ import Fastify from "fastify";
 import { z } from "zod";
 import type { AxlClient } from "@kingsvarmo/axl-client";
 import type { KeeperHubClient } from "@kingsvarmo/keeperhub";
-import { supportedInputFormats, type AgentListing, type JobCreateInput } from "@kingsvarmo/shared";
+import { supportedInputFormats, type AgentListing, type ClassroomAssignment, type JobCreateInput } from "@kingsvarmo/shared";
 import { getZeroGIntegrationStatus } from "@kingsvarmo/zero-g";
 import { createBackendAxlClient } from "./integrations/axl";
 import { createBackendKeeperHubClient } from "./integrations/keeperhub";
@@ -35,6 +35,22 @@ const createAgentSchema = z.object({
   privacyNotes: z.string().optional(),
   intelligenceReference: z.string().optional(),
   storageReference: z.string().optional()
+});
+
+const createAssignmentSchema = z.object({
+  title: z.string().min(1),
+  className: z.string().min(1),
+  agentId: z.string().min(1),
+  instructions: z.string().optional().default(""),
+  dueDate: z.string().optional(),
+  teacherWallet: z.string().optional().default("")
+});
+
+const createSubmissionSchema = z.object({
+  studentName: z.string().min(1),
+  studentWallet: z.string().optional(),
+  filename: z.string().min(1),
+  csvText: z.string().optional().default("")
 });
 
 export interface BuildApiServerOptions {
@@ -357,6 +373,118 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     return {
       run
     };
+  });
+
+  server.get("/api/workplace/assignments", async () => ({
+    assignments: store.listAssignments()
+  }));
+
+  server.post("/api/workplace/assignments", async (request, reply) => {
+    const parsed = createAssignmentSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "invalid_assignment_input",
+        issues: parsed.error.issues
+      });
+    }
+
+    if (!store.getAgent(parsed.data.agentId)) {
+      return reply.code(404).send({
+        error: "agent_not_found"
+      });
+    }
+
+    const assignmentInput: Omit<ClassroomAssignment, "id" | "submissionIds" | "createdAt"> = {
+      teacherWallet: parsed.data.teacherWallet,
+      title: parsed.data.title,
+      className: parsed.data.className,
+      agentId: parsed.data.agentId,
+      instructions: parsed.data.instructions,
+      ...(parsed.data.dueDate ? { dueDate: parsed.data.dueDate } : {})
+    };
+    const assignment = store.createAssignment(assignmentInput);
+
+    return reply.code(201).send({
+      assignment
+    });
+  });
+
+  server.get("/api/workplace/assignments/:assignmentId", async (request, reply) => {
+    const { assignmentId } = request.params as { assignmentId: string };
+    const assignment = store.getAssignment(assignmentId);
+
+    if (!assignment) {
+      return reply.code(404).send({
+        error: "assignment_not_found"
+      });
+    }
+
+    return {
+      assignment
+    };
+  });
+
+  server.get("/api/workplace/assignments/:assignmentId/submissions", async (request, reply) => {
+    const { assignmentId } = request.params as { assignmentId: string };
+
+    if (!store.getAssignment(assignmentId)) {
+      return reply.code(404).send({
+        error: "assignment_not_found"
+      });
+    }
+
+    return {
+      submissions: store.listSubmissions(assignmentId)
+    };
+  });
+
+  server.post("/api/workplace/assignments/:assignmentId/submissions", async (request, reply) => {
+    const { assignmentId } = request.params as { assignmentId: string };
+    const assignment = store.getAssignment(assignmentId);
+
+    if (!assignment) {
+      return reply.code(404).send({
+        error: "assignment_not_found"
+      });
+    }
+
+    const parsed = createSubmissionSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "invalid_submission_input",
+        issues: parsed.error.issues
+      });
+    }
+
+    const job = store.createJob({
+      agentId: assignment.agentId,
+      userWallet: parsed.data.studentWallet ?? "",
+      filename: parsed.data.filename,
+      inputMetadata: {
+        csvText: parsed.data.csvText,
+        participantName: parsed.data.studentName,
+        assignmentId
+      }
+    });
+    const submission = store.createSubmission({
+      assignmentId,
+      studentName: parsed.data.studentName,
+      ...(parsed.data.studentWallet ? { studentWallet: parsed.data.studentWallet } : {}),
+      filename: parsed.data.filename,
+      jobId: job.id,
+      status: "submitted"
+    });
+
+    store.updateAssignment(assignmentId, {
+      submissionIds: [...assignment.submissionIds, submission.id]
+    });
+
+    return reply.code(201).send({
+      submission,
+      jobId: job.id
+    });
   });
 
   return server;

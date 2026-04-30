@@ -21,3 +21,6 @@ export interface ClassroomSubmission {
   status: "created" | "submitted" | "running" | "completed" | "failed";
   createdAt: string;
 }
+
+export type WorkplaceAssignment = ClassroomAssignment;
+export type WorkplaceSubmission = ClassroomSubmission;

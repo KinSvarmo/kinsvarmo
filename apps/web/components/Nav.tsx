@@ -26,7 +26,7 @@ export function Nav() {
 
   const links = [
     { href: "/agents",    label: "Browse Agents" },
-    { href: "/classroom", label: "Classroom" },
+    { href: "/workplace", label: "Workspaces" },
     { href: "/creator",   label: "Create Agent" },
     { href: "/jobs",      label: "My Jobs" },
     { href: "/status",    label: "System" },

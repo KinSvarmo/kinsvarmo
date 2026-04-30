@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import type { ClassroomAssignment, ClassroomSubmission } from "@kingsvarmo/shared";
+import type { WorkplaceAssignment, WorkplaceSubmission } from "@kingsvarmo/shared";
 import { seededAgents } from "@kingsvarmo/shared";
 import { fetchJson } from "@/lib/api";
 
 export default function AssignmentPage({ params }: { params: Promise<{ assignmentId: string }> }) {
   const { assignmentId } = use(params);
-  const [assignment, setAssignment] = useState<ClassroomAssignment | null>(null);
-  const [submissions, setSubmissions] = useState<ClassroomSubmission[]>([]);
+  const [assignment, setAssignment] = useState<WorkplaceAssignment | null>(null);
+  const [submissions, setSubmissions] = useState<WorkplaceSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,8 +19,8 @@ export default function AssignmentPage({ params }: { params: Promise<{ assignmen
     async function load() {
       try {
         const [aRes, sRes] = await Promise.all([
-          fetchJson<{ assignment: ClassroomAssignment }>(`/api/classroom/assignments/${assignmentId}`),
-          fetchJson<{ submissions: ClassroomSubmission[] }>(`/api/classroom/assignments/${assignmentId}/submissions`),
+          fetchJson<{ assignment: WorkplaceAssignment }>(`/api/workplace/assignments/${assignmentId}`),
+          fetchJson<{ submissions: WorkplaceSubmission[] }>(`/api/workplace/assignments/${assignmentId}/submissions`),
         ]);
         if (!cancelled) {
           setAssignment(aRes.assignment);
@@ -39,14 +39,14 @@ export default function AssignmentPage({ params }: { params: Promise<{ assignmen
   }, [assignmentId]);
 
   const agentName = seededAgents.find((a) => a.id === assignment?.agentId)?.name ?? assignment?.agentId ?? "—";
-  const submitUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/classroom/${assignmentId}/submit`;
+  const submitUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/workplace/${assignmentId}/submit`;
 
   if (loading) {
     return (
       <div className="container" style={{ paddingTop: 80 }}>
         <div className="glass-lg" style={{ padding: 32 }}>
-          <p className="eyebrow" style={{ marginBottom: 8 }}>Classroom</p>
-          <p style={{ color: "var(--text-2)" }}>Loading assignment…</p>
+          <p className="eyebrow" style={{ marginBottom: 8 }}>Workspaces</p>
+          <p style={{ color: "var(--text-2)" }}>Loading task…</p>
         </div>
       </div>
     );
@@ -56,9 +56,9 @@ export default function AssignmentPage({ params }: { params: Promise<{ assignmen
     return (
       <div className="container" style={{ paddingTop: 80, maxWidth: 640 }}>
         <div className="glass-lg" style={{ padding: 32 }}>
-          <p className="eyebrow" style={{ marginBottom: 8 }}>Classroom</p>
-          <div className="callout callout-error" style={{ marginBottom: 20 }}>{error ?? "Assignment not found"}</div>
-          <Link href="/classroom" className="btn btn-secondary">Back</Link>
+          <p className="eyebrow" style={{ marginBottom: 8 }}>Workspaces</p>
+          <div className="callout callout-error" style={{ marginBottom: 20 }}>{error ?? "Task not found"}</div>
+          <Link href="/workplace" className="btn btn-secondary">Back</Link>
         </div>
       </div>
     );
@@ -67,20 +67,20 @@ export default function AssignmentPage({ params }: { params: Promise<{ assignmen
   return (
     <div className="container" style={{ paddingTop: 48, paddingBottom: 80 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 28, fontSize: "0.82rem", color: "var(--text-3)" }}>
-        <Link href="/classroom" style={{ color: "var(--text-3)" }}>Classroom</Link>
+        <Link href="/workplace" style={{ color: "var(--text-3)" }}>Workspaces</Link>
         <span>/</span>
         <span style={{ color: "var(--text)" }}>{assignment.title}</span>
       </div>
 
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 32 }}>
         <div>
-          <p className="eyebrow" style={{ marginBottom: 8 }}>Assignment</p>
+          <p className="eyebrow" style={{ marginBottom: 8 }}>Shared task</p>
           <h1 style={{ fontSize: "2rem", marginBottom: 6 }}>{assignment.title}</h1>
           <p style={{ color: "var(--text-2)", fontSize: "0.9rem" }}>{assignment.className} · Agent: {agentName}</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <Link href={`/classroom/${assignmentId}/results`} className="btn btn-secondary btn-sm">Results table</Link>
-          <Link href={`/classroom/${assignmentId}/submit`} className="btn btn-primary btn-sm">Submit dataset</Link>
+          <Link href={`/workplace/${assignmentId}/results`} className="btn btn-secondary btn-sm">Results table</Link>
+          <Link href={`/workplace/${assignmentId}/submit`} className="btn btn-primary btn-sm">Submit dataset</Link>
         </div>
       </div>
 
@@ -90,7 +90,7 @@ export default function AssignmentPage({ params }: { params: Promise<{ assignmen
             <p className="eyebrow" style={{ marginBottom: 12 }}>Submissions</p>
             {submissions.length === 0 ? (
               <div className="callout callout-info">
-                No submissions yet. Share the link below with students.
+                No submissions yet. Share the link below with participants.
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -119,7 +119,7 @@ export default function AssignmentPage({ params }: { params: Promise<{ assignmen
           <section className="glass" style={{ padding: 20 }}>
             <p className="eyebrow" style={{ marginBottom: 12 }}>Details</p>
             <div className="job-detail-list">
-              <div className="job-detail-row"><span>Class</span><strong>{assignment.className}</strong></div>
+              <div className="job-detail-row"><span>Group</span><strong>{assignment.className}</strong></div>
               <div className="job-detail-row"><span>Agent</span><strong>{agentName}</strong></div>
               <div className="job-detail-row"><span>Submissions</span><strong>{assignment.submissionIds.length}</strong></div>
               {assignment.dueDate && <div className="job-detail-row"><span>Due</span><strong>{assignment.dueDate}</strong></div>}
@@ -134,7 +134,7 @@ export default function AssignmentPage({ params }: { params: Promise<{ assignmen
           )}
 
           <section className="glass" style={{ padding: 20 }}>
-            <p className="eyebrow" style={{ marginBottom: 10 }}>Student link</p>
+            <p className="eyebrow" style={{ marginBottom: 10 }}>Submission link</p>
             <p style={{ color: "var(--text-3)", fontSize: "0.75rem", wordBreak: "break-all", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.5 }}>
               {submitUrl}
             </p>
@@ -145,7 +145,7 @@ export default function AssignmentPage({ params }: { params: Promise<{ assignmen
   );
 }
 
-function statusBadge(status: ClassroomSubmission["status"]): string {
+function statusBadge(status: WorkplaceSubmission["status"]): string {
   if (status === "completed") return "badge badge-teal";
   if (status === "failed") return "badge badge-amber";
   if (status === "running") return "badge badge-blue";

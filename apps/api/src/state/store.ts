@@ -3,6 +3,8 @@ import type {
   AnalysisJob,
   AnalysisResult,
   AxlMessage,
+  ClassroomAssignment,
+  ClassroomSubmission,
   JobCreateInput,
   JobStatus,
   ModuleStatus,
@@ -22,6 +24,14 @@ export interface JobStore {
   createResult(result: AnalysisResult): AnalysisResult;
   getResult(resultId: string): AnalysisResult | undefined;
   getResultByJobId(jobId: string): AnalysisResult | undefined;
+  listAssignments(): ClassroomAssignment[];
+  createAssignment(input: Omit<ClassroomAssignment, "id" | "submissionIds" | "createdAt"> & Partial<Pick<ClassroomAssignment, "id" | "submissionIds" | "createdAt">>): ClassroomAssignment;
+  getAssignment(assignmentId: string): ClassroomAssignment | undefined;
+  updateAssignment(assignmentId: string, patch: Partial<ClassroomAssignment>): ClassroomAssignment;
+  listSubmissions(assignmentId: string): ClassroomSubmission[];
+  createSubmission(input: Omit<ClassroomSubmission, "id" | "createdAt"> & Partial<Pick<ClassroomSubmission, "id" | "createdAt">>): ClassroomSubmission;
+  getSubmission(submissionId: string): ClassroomSubmission | undefined;
+  updateSubmission(submissionId: string, patch: Partial<ClassroomSubmission>): ClassroomSubmission;
 }
 
 export function createInMemoryJobStore(): JobStore {
@@ -31,6 +41,8 @@ export function createInMemoryJobStore(): JobStore {
   const jobs = new Map<string, AnalysisJob>();
   const messages = new Map<string, AxlMessage[]>();
   const results = new Map<string, AnalysisResult>();
+  const assignments = new Map<string, ClassroomAssignment>();
+  const submissions = new Map<string, ClassroomSubmission>();
 
   return {
     listAgents() {
@@ -125,7 +137,103 @@ export function createInMemoryJobStore(): JobStore {
     },
     getResultByJobId(jobId) {
       return [...results.values()].find((result) => result.jobId === jobId);
+    },
+    listAssignments() {
+      return [...assignments.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    },
+    createAssignment(input) {
+      const now = new Date().toISOString();
+      const id = input.id ?? `asgn_${Date.now()}_${assignments.size + 1}`;
+      const assignment: ClassroomAssignment = {
+        ...input,
+        id,
+        submissionIds: input.submissionIds ?? [],
+        createdAt: input.createdAt ?? now
+      };
+
+      assignments.set(assignment.id, assignment);
+      return assignment;
+    },
+    getAssignment(assignmentId) {
+      return assignments.get(assignmentId);
+    },
+    updateAssignment(assignmentId, patch) {
+      const assignment = assignments.get(assignmentId);
+
+      if (!assignment) {
+        throw new Error(`Assignment not found: ${assignmentId}`);
+      }
+
+      const updated: ClassroomAssignment = {
+        ...assignment,
+        ...patch
+      };
+
+      assignments.set(assignmentId, updated);
+      return updated;
+    },
+    listSubmissions(assignmentId) {
+      return [...submissions.values()]
+        .filter((submission) => submission.assignmentId === assignmentId)
+        .map((submission) => withLiveSubmissionState(submission, jobs, results))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    },
+    createSubmission(input) {
+      const now = new Date().toISOString();
+      const id = input.id ?? `sub_${Date.now()}_${submissions.size + 1}`;
+      const submission: ClassroomSubmission = {
+        ...input,
+        id,
+        createdAt: input.createdAt ?? now
+      };
+
+      submissions.set(submission.id, submission);
+      return submission;
+    },
+    getSubmission(submissionId) {
+      const submission = submissions.get(submissionId);
+      return submission ? withLiveSubmissionState(submission, jobs, results) : undefined;
+    },
+    updateSubmission(submissionId, patch) {
+      const submission = submissions.get(submissionId);
+
+      if (!submission) {
+        throw new Error(`Submission not found: ${submissionId}`);
+      }
+
+      const updated: ClassroomSubmission = {
+        ...submission,
+        ...patch
+      };
+
+      submissions.set(submissionId, updated);
+      return withLiveSubmissionState(updated, jobs, results);
     }
+  };
+}
+
+function withLiveSubmissionState(
+  submission: ClassroomSubmission,
+  jobs: Map<string, AnalysisJob>,
+  results: Map<string, AnalysisResult>
+): ClassroomSubmission {
+  if (!submission.jobId) {
+    return submission;
+  }
+
+  const job = jobs.get(submission.jobId);
+  const result = [...results.values()].find((candidate) => candidate.jobId === submission.jobId);
+
+  return {
+    ...submission,
+    ...(result ? { resultId: result.id } : {}),
+    status: result
+      ? "completed"
+      : job?.status === "failed"
+        ? "failed"
+        : job && job.status !== "created"
+          ? "running"
+          : submission.status
   };
 }
 

@@ -127,15 +127,15 @@ export const seededAgents: AgentListing[] = [
     createdAt: "2026-04-24T00:40:00.000Z"
   },
   {
-    id: "agent_classroom_pulse_reviewer",
-    name: "Classroom Pulse Reviewer",
-    slug: "classroom-pulse-reviewer",
-    creatorName: "KinSvarmo Education",
+    id: "agent_cohort_submission_reviewer",
+    name: "Cohort Submission Reviewer",
+    slug: "cohort-submission-reviewer",
+    creatorName: "KinSvarmo Workflows",
     creatorWallet: "0x0000000000000000000000000000000000000006",
     description:
-      "Reviews student dose-response submissions and returns a structured confidence report for classroom comparison.",
+      "Reviews grouped dose-response submissions and returns a structured confidence report for comparison.",
     longDescription:
-      "A classroom-oriented analysis agent for dose-response lab datasets. Each student submits a CSV and receives an individual report. Teachers compare confidence scores and key findings across the class through the results table.",
+      "A shared-workflow analysis agent for dose-response datasets. Each participant submits a CSV and receives an individual report. Coordinators compare confidence scores and key findings across the group through the results table.",
     domain: "research-ops",
     supportedFormats: ["csv"],
     priceIn0G: "0.10",
@@ -143,11 +143,11 @@ export const seededAgents: AgentListing[] = [
     status: "published",
     previewOutput: "Confidence score, estimated LD50, and structured findings for each submission.",
     expectedOutput:
-      "A structured report with dose-response observations, confidence, and provenance for classroom review.",
+      "A structured report with dose-response observations, confidence, and provenance for grouped review.",
     privacyNotes:
       "Each submission is scoped to the individual job and is not shared across listings.",
-    intelligenceReference: "0g://placeholder/intelligence/classroom-pulse",
-    storageReference: "0g://placeholder/metadata/classroom-pulse",
+    intelligenceReference: "0g://placeholder/intelligence/cohort-submission",
+    storageReference: "0g://placeholder/metadata/cohort-submission",
     createdAt: "2026-04-24T00:50:00.000Z"
   }
 ];

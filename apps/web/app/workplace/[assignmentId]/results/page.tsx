@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import type { ClassroomAssignment, ClassroomSubmission, AnalysisResult } from "@kingsvarmo/shared";
+import type { WorkplaceAssignment, WorkplaceSubmission, AnalysisResult } from "@kingsvarmo/shared";
 import { fetchJson } from "@/lib/api";
 
-type SubmissionWithResult = ClassroomSubmission & { result?: AnalysisResult };
+type SubmissionWithResult = WorkplaceSubmission & { result?: AnalysisResult };
 
 export default function ResultsPage({ params }: { params: Promise<{ assignmentId: string }> }) {
   const { assignmentId } = use(params);
-  const [assignment, setAssignment] = useState<ClassroomAssignment | null>(null);
+  const [assignment, setAssignment] = useState<WorkplaceAssignment | null>(null);
   const [rows, setRows] = useState<SubmissionWithResult[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,8 +19,8 @@ export default function ResultsPage({ params }: { params: Promise<{ assignmentId
     async function load() {
       try {
         const [aRes, sRes] = await Promise.all([
-          fetchJson<{ assignment: ClassroomAssignment }>(`/api/classroom/assignments/${assignmentId}`),
-          fetchJson<{ submissions: ClassroomSubmission[] }>(`/api/classroom/assignments/${assignmentId}/submissions`),
+          fetchJson<{ assignment: WorkplaceAssignment }>(`/api/workplace/assignments/${assignmentId}`),
+          fetchJson<{ submissions: WorkplaceSubmission[] }>(`/api/workplace/assignments/${assignmentId}/submissions`),
         ]);
 
         const withResults = await Promise.all(
@@ -53,15 +53,15 @@ export default function ResultsPage({ params }: { params: Promise<{ assignmentId
   return (
     <div className="container" style={{ paddingTop: 48, paddingBottom: 80 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 28, fontSize: "0.82rem", color: "var(--text-3)" }}>
-        <Link href="/classroom" style={{ color: "var(--text-3)" }}>Classroom</Link>
+        <Link href="/workplace" style={{ color: "var(--text-3)" }}>Workspaces</Link>
         <span>/</span>
-        <Link href={`/classroom/${assignmentId}`} style={{ color: "var(--text-3)" }}>{assignment?.title ?? assignmentId}</Link>
+        <Link href={`/workplace/${assignmentId}`} style={{ color: "var(--text-3)" }}>{assignment?.title ?? assignmentId}</Link>
         <span>/</span>
         <span style={{ color: "var(--text)" }}>Results</span>
       </div>
 
       <p className="eyebrow" style={{ marginBottom: 8 }}>Results</p>
-      <h1 style={{ fontSize: "1.8rem", marginBottom: 32 }}>{assignment?.title ?? "Assignment"}</h1>
+      <h1 style={{ fontSize: "1.8rem", marginBottom: 32 }}>{assignment?.title ?? "Shared task"}</h1>
 
       {loading ? (
         <div className="callout callout-info">Loading…</div>
@@ -72,7 +72,7 @@ export default function ResultsPage({ params }: { params: Promise<{ assignmentId
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                {["Student", "Status", "Confidence", "Key finding", "Result"].map((h) => (
+                {["Submitter", "Status", "Confidence", "Key finding", "Result"].map((h) => (
                   <th key={h} style={{ padding: "12px 16px", textAlign: "left", color: "var(--text-3)", fontWeight: 500, fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                 ))}
               </tr>
@@ -113,7 +113,7 @@ export default function ResultsPage({ params }: { params: Promise<{ assignmentId
   );
 }
 
-function statusBadge(status: ClassroomSubmission["status"]): string {
+function statusBadge(status: WorkplaceSubmission["status"]): string {
   if (status === "completed") return "badge badge-teal";
   if (status === "failed") return "badge badge-amber";
   if (status === "running") return "badge badge-blue";

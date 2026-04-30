@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ClassroomAssignment } from "@kingsvarmo/shared";
+import type { WorkplaceAssignment } from "@kingsvarmo/shared";
 import { seededAgents } from "@kingsvarmo/shared";
 import { fetchJson } from "@/lib/api";
 
@@ -21,7 +21,7 @@ export default function SubmitPage({ params }: { params: Promise<{ assignmentId:
   const { assignmentId } = use(params);
   const router = useRouter();
 
-  const [assignment, setAssignment] = useState<ClassroomAssignment | null>(null);
+  const [assignment, setAssignment] = useState<WorkplaceAssignment | null>(null);
   const [studentName, setStudentName] = useState("");
   const [csvText, setCsvText] = useState("");
   const [filename, setFilename] = useState("");
@@ -29,7 +29,7 @@ export default function SubmitPage({ params }: { params: Promise<{ assignmentId:
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchJson<{ assignment: ClassroomAssignment }>(`/api/classroom/assignments/${assignmentId}`)
+    fetchJson<{ assignment: WorkplaceAssignment }>(`/api/workplace/assignments/${assignmentId}`)
       .then((r) => setAssignment(r.assignment))
       .catch(() => {});
   }, [assignmentId]);
@@ -51,7 +51,7 @@ export default function SubmitPage({ params }: { params: Promise<{ assignmentId:
 
     try {
       const { jobId } = await fetchJson<{ jobId: string }>(
-        `/api/classroom/assignments/${assignmentId}/submissions`,
+        `/api/workplace/assignments/${assignmentId}/submissions`,
         {
           method: "POST",
           body: JSON.stringify({ studentName, filename: filename || "dataset.csv", csvText }),
@@ -71,15 +71,15 @@ export default function SubmitPage({ params }: { params: Promise<{ assignmentId:
   return (
     <div className="container" style={{ paddingTop: 48, paddingBottom: 80, maxWidth: 640 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 28, fontSize: "0.82rem", color: "var(--text-3)" }}>
-        <Link href="/classroom" style={{ color: "var(--text-3)" }}>Classroom</Link>
+        <Link href="/workplace" style={{ color: "var(--text-3)" }}>Workspaces</Link>
         <span>/</span>
-        <Link href={`/classroom/${assignmentId}`} style={{ color: "var(--text-3)" }}>{assignment?.title ?? assignmentId}</Link>
+        <Link href={`/workplace/${assignmentId}`} style={{ color: "var(--text-3)" }}>{assignment?.title ?? assignmentId}</Link>
         <span>/</span>
         <span style={{ color: "var(--text)" }}>Submit</span>
       </div>
 
-      <p className="eyebrow" style={{ marginBottom: 8 }}>Student submission</p>
-      <h1 style={{ fontSize: "1.8rem", marginBottom: 6 }}>{assignment?.title ?? "Assignment"}</h1>
+      <p className="eyebrow" style={{ marginBottom: 8 }}>Dataset submission</p>
+      <h1 style={{ fontSize: "1.8rem", marginBottom: 6 }}>{assignment?.title ?? "Shared task"}</h1>
       {assignment && (
         <p style={{ color: "var(--text-2)", fontSize: "0.88rem", marginBottom: 32 }}>
           {assignment.className} · Agent: {agentName}
@@ -95,12 +95,12 @@ export default function SubmitPage({ params }: { params: Promise<{ assignmentId:
       <form onSubmit={handleSubmit}>
         <div className="glass" style={{ padding: 32, display: "flex", flexDirection: "column", gap: 22 }}>
           <div>
-            <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Your name</label>
+            <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Submitter name</label>
             <input
               className="input"
               value={studentName}
               onChange={(e) => setStudentName(e.target.value)}
-              placeholder="Full name"
+              placeholder="Name or team"
               required
             />
           </div>
@@ -110,10 +110,10 @@ export default function SubmitPage({ params }: { params: Promise<{ assignmentId:
             <input type="file" accept=".csv,.txt" onChange={handleFile} style={{ display: "block", marginBottom: 8 }} />
             {!csvText && (
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setCsvText(SAMPLE_CSV); setFilename("classroom-pulse-sample.csv"); }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setCsvText(SAMPLE_CSV); setFilename("workplace-pulse-sample.csv"); }}>
                   Use sample CSV
                 </button>
-                <a href="/demo-data/classroom-pulse-sample.csv" download className="btn btn-secondary btn-sm">
+                <a href="/demo-data/workplace-pulse-sample.csv" download className="btn btn-secondary btn-sm">
                   Download sample
                 </a>
               </div>

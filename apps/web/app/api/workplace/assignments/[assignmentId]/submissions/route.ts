@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { ClassroomSubmission } from "@kingsvarmo/shared";
+import type { WorkplaceSubmission } from "@kingsvarmo/shared";
 import { getAssignment, setAssignment, getSubmission, setSubmission, setJob, setMessages } from "@/lib/store";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ assignmentId: string }> }) {
@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ assignm
   );
 
   return NextResponse.json({
-    submissions: submissions.filter((s): s is ClassroomSubmission => s !== null),
+    submissions: submissions.filter((s): s is WorkplaceSubmission => s !== null),
   });
 }
 
@@ -56,7 +56,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ assignm
     await setMessages(jobId, []);
 
     const submissionId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const submission: ClassroomSubmission = {
+    const submission: WorkplaceSubmission = {
       id: submissionId,
       assignmentId,
       studentName: body.studentName,
@@ -75,7 +75,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ assignm
 
     return NextResponse.json({ submission, jobId }, { status: 201 });
   } catch (err: unknown) {
-    console.error("[POST /api/classroom/assignments/:id/submissions]", err);
+    console.error("[POST /api/workplace/assignments/:id/submissions]", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 }
