@@ -1,0 +1,13 @@
+student_id,attendance_rate,assignment_completion,quiz_average,participation_score,late_submissions,recent_trend,support_note
+STU-001,0,0,0,0,0,declining,attendance pattern should be checked before academic conclusions
+STU-002,0.95,0,16,0,5,declining,prioritize task chunking and low-pressure follow-up
+STU-003,0.96,0.74,0,0.02,1,declining,review core concept gaps with short practice loop
+STU-004,1,0.92,0,0,1,declining,review core concept gaps with short practice loop
+STU-005,0.32,0,0,0,1,declining,attendance pattern should be checked before academic conclusions
+STU-006,0,0,0,0,0,declining,attendance pattern should be checked before academic conclusions
+STU-007,0.99,0,16,0,1,declining,prioritize task chunking and low-pressure follow-up
+STU-008,0.99,0,24,0.1,1,declining,prioritize task chunking and low-pressure follow-up
+STU-009,0,0,0,0,0,declining,attendance pattern should be checked before academic conclusions
+STU-010,0.32,0,0,0,5,declining,attendance pattern should be checked before academic conclusions
+STU-011,0.33,0,0,0.25,1,declining,attendance pattern should be checked before academic conclusions
+STU-012,0.8,0,0,0.04,4,declining,prioritize task chunking and low-pressure follow-up
