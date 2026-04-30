@@ -109,9 +109,14 @@ export default function SubmitPage({ params }: { params: Promise<{ assignmentId:
             <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 6 }}>Dataset (CSV)</label>
             <input type="file" accept=".csv,.txt" onChange={handleFile} style={{ display: "block", marginBottom: 8 }} />
             {!csvText && (
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setCsvText(SAMPLE_CSV); setFilename("sample.csv"); }}>
-                Use sample CSV
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setCsvText(SAMPLE_CSV); setFilename("classroom-pulse-sample.csv"); }}>
+                  Use sample CSV
+                </button>
+                <a href="/demo-data/classroom-pulse-sample.csv" download className="btn btn-secondary btn-sm">
+                  Download sample
+                </a>
+              </div>
             )}
             {csvText && (
               <pre style={{ marginTop: 8, padding: "10px 12px", background: "var(--bg-raised)", borderRadius: "var(--radius-sm)", fontSize: "0.75rem", color: "var(--text-2)", overflow: "auto", maxHeight: 160 }}>
