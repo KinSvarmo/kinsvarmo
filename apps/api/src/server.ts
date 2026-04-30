@@ -67,8 +67,10 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
   const keeperHubClient = options.keeperHubClient ?? createBackendKeeperHubClient();
   const store = options.store ?? createInMemoryJobStore();
 
+  const allowedOrigins = parseAllowedOrigins();
+
   await server.register(cors, {
-    origin: true
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true
   });
 
   server.get("/health", async () => ({
@@ -500,4 +502,12 @@ function slugify(value: string): string {
 
 function normalizeDomain(value: string): string {
   return slugify(value) || "research-ops";
+}
+
+function parseAllowedOrigins(): string[] {
+  const raw = process.env.CORS_ORIGINS ?? process.env.WEB_ORIGIN ?? "";
+  return raw
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/$/, ""))
+    .filter(Boolean);
 }

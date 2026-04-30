@@ -22,6 +22,7 @@
     "keeperhub:test": "tsx scripts/keeperhub/test-workflow.ts",
     "demo:local": "tsx scripts/demo/start-local-demo.ts",
     "demo:check": "tsx scripts/demo/check-local-demo.ts",
+    "deploy:api-stack": "tsx scripts/deploy/start-api-stack.ts",
     "build": "pnpm -r build",
     "test": "node --import tsx --test scripts/tests/**/*.test.ts",
     "test:axl": "node --import tsx --test scripts/tests/axl/*.test.ts",
