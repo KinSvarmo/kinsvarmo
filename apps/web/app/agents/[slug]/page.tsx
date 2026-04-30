@@ -423,7 +423,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
     }
 
     if (!tokenIdBigInt) {
-      setApiError("This agent does not have an onchain token ID yet.");
+      await handleLocalUploadRun();
       return;
     }
     if (!file) {
@@ -846,7 +846,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                       disabled={isPending || isConfirming || isSubmittingJob}
                       onClick={handleAuthorize}
                     >
-                      {isSubmittingJob ? "Starting analysis…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : `Authorize and start — ${formatEther(usageFeeValue)} OG`}
+                      {isSubmittingJob ? "Starting analysis…" : isPending ? "Waiting for wallet…" : isConfirming ? "Confirming on 0G…" : tokenIdBigInt ? `Authorize and start — ${formatEther(usageFeeValue)} OG` : "Run analysis"}
                     </button>
                   </div>
                 </div>
