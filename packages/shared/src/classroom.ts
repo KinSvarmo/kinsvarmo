@@ -1,8 +1,23 @@
 export interface ClassroomAssignment {
   id: string;
   teacherWallet: string;
-  agentId: string;
+  title: string;
   className: string;
-  dueDate: string;
+  agentId: string;
+  instructions: string;
+  dueDate?: string;
   submissionIds: string[];
+  createdAt: string;
+}
+
+export interface ClassroomSubmission {
+  id: string;
+  assignmentId: string;
+  studentName: string;
+  studentWallet?: string;
+  filename: string;
+  jobId?: string;
+  resultId?: string;
+  status: "created" | "submitted" | "running" | "completed" | "failed";
+  createdAt: string;
 }

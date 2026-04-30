@@ -25,9 +25,10 @@ export function Nav() {
   const wrongChain = mounted && isConnected && chainId !== ogTestnet.id;
 
   const links = [
-    { href: "/agents",  label: "Browse Agents" },
-    { href: "/creator", label: "Create Agent" },
-    { href: "/status", label: "System" },
+    { href: "/agents",    label: "Browse Agents" },
+    { href: "/classroom", label: "Classroom" },
+    { href: "/creator",   label: "Create Agent" },
+    { href: "/status",    label: "System" },
   ];
 
   return (

@@ -1,5 +1,5 @@
 import { Redis } from "@upstash/redis";
-import type { AnalysisJob, AnalysisResult, AxlMessage } from "@kingsvarmo/shared";
+import type { AnalysisJob, AnalysisResult, AxlMessage, ClassroomAssignment, ClassroomSubmission } from "@kingsvarmo/shared";
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL!,
@@ -38,4 +38,36 @@ export async function getKeeperHubRun(jobId: string): Promise<unknown> {
 
 export async function setKeeperHubRun(jobId: string, run: unknown): Promise<void> {
   await redis.set(`keeperhub:${jobId}`, run, { ex: TTL });
+}
+
+// ── Classroom ─────────────────────────────────────────────────────────────────
+
+export async function getAssignment(id: string): Promise<ClassroomAssignment | null> {
+  return redis.get<ClassroomAssignment>(`classroom:assignment:${id}`);
+}
+
+export async function setAssignment(id: string, assignment: ClassroomAssignment): Promise<void> {
+  await redis.set(`classroom:assignment:${id}`, assignment, { ex: TTL });
+}
+
+export async function getAllAssignments(): Promise<ClassroomAssignment[]> {
+  const ids = (await redis.get<string[]>("classroom:assignment_ids")) ?? [];
+  if (ids.length === 0) return [];
+  const results = await Promise.all(ids.map((id) => getAssignment(id)));
+  return results.filter((a): a is ClassroomAssignment => a !== null);
+}
+
+export async function addAssignmentId(id: string): Promise<void> {
+  const ids = (await redis.get<string[]>("classroom:assignment_ids")) ?? [];
+  if (!ids.includes(id)) {
+    await redis.set("classroom:assignment_ids", [...ids, id], { ex: TTL * 7 });
+  }
+}
+
+export async function getSubmission(id: string): Promise<ClassroomSubmission | null> {
+  return redis.get<ClassroomSubmission>(`classroom:submission:${id}`);
+}
+
+export async function setSubmission(id: string, submission: ClassroomSubmission): Promise<void> {
+  await redis.set(`classroom:submission:${id}`, submission, { ex: TTL });
 }
