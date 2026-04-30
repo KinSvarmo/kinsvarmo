@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { jobsStore } from "@/lib/store";
+import { getJob } from "@/lib/store";
 
-export async function GET(req: Request, { params }: { params: Promise<{ jobId: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
-  const job = jobsStore.get(jobId);
-  
+  const job = await getJob(jobId);
+
   if (!job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
-  
+
   return NextResponse.json({ job });
 }

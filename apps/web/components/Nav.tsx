@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi";
 import { ogTestnet } from "@/lib/chain";
@@ -11,6 +12,9 @@ function truncate(addr: string) {
 }
 
 export function Nav() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const pathname = usePathname();
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
@@ -18,7 +22,7 @@ export function Nav() {
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
 
-  const wrongChain = isConnected && chainId !== ogTestnet.id;
+  const wrongChain = mounted && isConnected && chainId !== ogTestnet.id;
 
   const links = [
     { href: "/agents",  label: "Browse Agents" },
@@ -62,7 +66,7 @@ export function Nav() {
 
         {/* Wallet area */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {wrongChain && (
+          {mounted && wrongChain && (
             <button
               onClick={() => switchChain({ chainId: ogTestnet.id })}
               className="btn btn-sm"
@@ -72,7 +76,7 @@ export function Nav() {
             </button>
           )}
 
-          {isConnected ? (
+          {mounted && isConnected ? (
             <button onClick={() => disconnect()} className="btn btn-secondary btn-sm" title="Click to disconnect">
               <span className="status-dot running" style={{ color: "var(--teal)" }} />
               {truncate(address!)}

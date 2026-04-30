@@ -1,24 +1,41 @@
+import { Redis } from "@upstash/redis";
 import type { AnalysisJob, AnalysisResult, AxlMessage } from "@kingsvarmo/shared";
 
-// Persist stores on globalThis so they survive Next.js module re-evaluations
-// and are shared across all API route handlers in the same Node.js process.
-declare global {
-  // eslint-disable-next-line no-var
-  var __ksJobsStore: Map<string, AnalysisJob> | undefined;
-  // eslint-disable-next-line no-var
-  var __ksMessagesStore: Map<string, AxlMessage[]> | undefined;
-  // eslint-disable-next-line no-var
-  var __ksResultsStore: Map<string, AnalysisResult> | undefined;
-  // eslint-disable-next-line no-var
-  var __ksKeeperHubStore: Map<string, unknown> | undefined;
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+});
+
+const TTL = 60 * 60 * 24;
+
+export async function getJob(jobId: string): Promise<AnalysisJob | null> {
+  return redis.get<AnalysisJob>(`job:${jobId}`);
 }
 
-globalThis.__ksJobsStore ??= new Map<string, AnalysisJob>();
-globalThis.__ksMessagesStore ??= new Map<string, AxlMessage[]>();
-globalThis.__ksResultsStore ??= new Map<string, AnalysisResult>();
-globalThis.__ksKeeperHubStore ??= new Map<string, unknown>();
+export async function setJob(jobId: string, job: AnalysisJob): Promise<void> {
+  await redis.set(`job:${jobId}`, job, { ex: TTL });
+}
 
-export const jobsStore = globalThis.__ksJobsStore;
-export const messagesStore = globalThis.__ksMessagesStore;
-export const resultsStore = globalThis.__ksResultsStore;
-export const keeperHubStore = globalThis.__ksKeeperHubStore;
+export async function getMessages(jobId: string): Promise<AxlMessage[]> {
+  return (await redis.get<AxlMessage[]>(`messages:${jobId}`)) ?? [];
+}
+
+export async function setMessages(jobId: string, messages: AxlMessage[]): Promise<void> {
+  await redis.set(`messages:${jobId}`, messages, { ex: TTL });
+}
+
+export async function getResult(jobId: string): Promise<AnalysisResult | null> {
+  return redis.get<AnalysisResult>(`result:${jobId}`);
+}
+
+export async function setResult(jobId: string, result: AnalysisResult): Promise<void> {
+  await redis.set(`result:${jobId}`, result, { ex: TTL });
+}
+
+export async function getKeeperHubRun(jobId: string): Promise<unknown> {
+  return redis.get(`keeperhub:${jobId}`);
+}
+
+export async function setKeeperHubRun(jobId: string, run: unknown): Promise<void> {
+  await redis.set(`keeperhub:${jobId}`, run, { ex: TTL });
+}

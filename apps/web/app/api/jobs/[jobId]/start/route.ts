@@ -1,5 +1,6 @@
+import { after } from "next/server";
 import { NextResponse } from "next/server";
-import { jobsStore, messagesStore, keeperHubStore, resultsStore } from "@/lib/store";
+import { getJob, setJob, getMessages, setMessages, setResult, setKeeperHubRun, getKeeperHubRun } from "@/lib/store";
 import { runInference } from "@kingsvarmo/zero-g";
 import type { AxlMessage } from "@kingsvarmo/shared";
 
@@ -24,10 +25,10 @@ type LocalKeeperHubRun = {
   };
 };
 
-export async function POST(req: Request, { params }: { params: Promise<{ jobId: string }> }) {
+export async function POST(_req: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     const { jobId } = await params;
-    const job = jobsStore.get(jobId);
+    const job = await getJob(jobId);
 
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
@@ -37,13 +38,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ jobId: 
       return NextResponse.json({ error: "Job already started" }, { status: 400 });
     }
 
-    // 1. Update status to started
     job.status = "planning";
     job.plannerStatus = "running";
     job.keeperhubRunId = `run_${Date.now()}`;
-    jobsStore.set(jobId, job);
+    await setJob(jobId, job);
 
-    // Create initial keeperHub state
     const keeperRun: LocalKeeperHubRun = {
       id: job.keeperhubRunId,
       jobId,
@@ -56,33 +55,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ jobId: 
           timestamp: new Date().toISOString(),
           level: "info",
           message: "Workflow started via API request",
-          metadata: {}
-        }
+          metadata: {},
+        },
       ],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       raw: {
         nodeStatuses: [{ nodeId: "planner", status: "Running" }],
-        execution: { executionTrace: ["planner"] }
-      }
+        execution: { executionTrace: ["planner"] },
+      },
     };
-    keeperHubStore.set(jobId, keeperRun);
+    await setKeeperHubRun(jobId, keeperRun);
 
-    // Mock planner message
-    const messages: AxlMessage[] = [];
-    messages.push({
-      id: `msg_${Date.now()}_1`,
-      jobId,
-      sender: "api",
-      receiver: "planner",
-      type: "job.created",
-      timestamp: new Date().toISOString(),
-      payload: { instruction: "Analyze CSV data" }
-    });
-    messagesStore.set(jobId, messages);
+    const initialMessages: AxlMessage[] = [
+      {
+        id: `msg_${Date.now()}_1`,
+        jobId,
+        sender: "api",
+        receiver: "planner",
+        type: "job.created",
+        timestamp: new Date().toISOString(),
+        payload: { instruction: "Analyze CSV data" },
+      },
+    ];
+    await setMessages(jobId, initialMessages);
 
-    // Run async analysis process without blocking the response
-    runAnalysisWorkflow(jobId);
+    after(runAnalysisWorkflow(jobId, job.keeperhubRunId));
 
     return NextResponse.json({ job });
   } catch (err: unknown) {
@@ -94,51 +92,63 @@ export async function POST(req: Request, { params }: { params: Promise<{ jobId: 
   }
 }
 
-async function runAnalysisWorkflow(jobId: string) {
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-  const job = jobsStore.get(jobId)!;
-  const messages = messagesStore.get(jobId)!;
-  const keeperRun = keeperHubStore.get(jobId) as LocalKeeperHubRun;
+async function runAnalysisWorkflow(jobId: string, keeperhubRunId: string) {
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const addLog = async (level: "info" | "error", message: string) => {
+    const current = (await getKeeperHubRun(jobId)) as LocalKeeperHubRun | null;
+    if (!current) return;
+    const log = { id: `log_${Date.now()}`, runId: keeperhubRunId, timestamp: new Date().toISOString(), level, message, metadata: {} };
+    await setKeeperHubRun(jobId, { ...current, logs: [...current.logs, log], updatedAt: new Date().toISOString() });
+  };
+
+  const pushMessage = async (msg: AxlMessage) => {
+    const messages = await getMessages(jobId);
+    await setMessages(jobId, [...messages, msg]);
+  };
+
+  const patchKeeper = async (patch: Partial<LocalKeeperHubRun>) => {
+    const current = (await getKeeperHubRun(jobId)) as LocalKeeperHubRun | null;
+    if (!current) return;
+    await setKeeperHubRun(jobId, { ...current, ...patch, updatedAt: new Date().toISOString() });
+  };
 
   try {
-    // ----------------------------------------------------------------------
     // PLANNER
-    // ----------------------------------------------------------------------
     await delay(1500);
-    job.plannerStatus = "completed";
-    job.analyzerStatus = "running";
-    job.status = "analyzing";
-    jobsStore.set(jobId, job);
-    
-    keeperRun.raw.nodeStatuses.push({ nodeId: "analyzer", status: "Running" });
-    keeperRun.raw.execution.executionTrace.push("analyzer");
-    keeperRun.logs.push({
-      id: `log_${Date.now()}`,
-      runId: job.keeperhubRunId!,
-      timestamp: new Date().toISOString(),
-      level: "info",
-      message: "Planner completed successfully. Analyzer starting.",
-      metadata: {}
-    });
+    const jobAfterPlanner = await getJob(jobId);
+    if (!jobAfterPlanner) return;
+    jobAfterPlanner.plannerStatus = "completed";
+    jobAfterPlanner.analyzerStatus = "running";
+    jobAfterPlanner.status = "analyzing";
+    await setJob(jobId, jobAfterPlanner);
 
-    messages.push({
+    const keeperAfterPlanner = (await getKeeperHubRun(jobId)) as LocalKeeperHubRun | null;
+    if (keeperAfterPlanner) {
+      await setKeeperHubRun(jobId, {
+        ...keeperAfterPlanner,
+        raw: {
+          nodeStatuses: [...keeperAfterPlanner.raw.nodeStatuses, { nodeId: "analyzer", status: "Running" }],
+          execution: { executionTrace: [...keeperAfterPlanner.raw.execution.executionTrace, "analyzer"] },
+        },
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    await addLog("info", "Planner completed successfully. Analyzer starting.");
+    await pushMessage({
       id: `msg_${Date.now()}_2`,
       jobId,
       sender: "planner",
       receiver: "analyzer",
       type: "plan.generated",
       timestamp: new Date().toISOString(),
-      payload: { steps: ["run_0g_compute"] }
+      payload: { steps: ["run_0g_compute"] },
     });
 
-    // ----------------------------------------------------------------------
-    // ANALYZER (0G Compute Inference)
-    // ----------------------------------------------------------------------
+    // ANALYZER (0G Compute)
     await delay(1000);
-    
-    // Check if we have 0G Provider set up
-    const providerAddress =
-      process.env.ZERO_G_COMPUTE_PROVIDER_ADDRESS ?? process.env.ZERO_G_INFERENCE_PROVIDER;
+
+    const providerAddress = process.env.ZERO_G_COMPUTE_PROVIDER_ADDRESS ?? process.env.ZERO_G_INFERENCE_PROVIDER;
     const computeModel = process.env.ZERO_G_COMPUTE_MODEL ?? "qwen/qwen-2.5-7b-instruct";
     const computeServiceUrl = process.env.ZERO_G_COMPUTE_SERVICE_URL ?? null;
     let analysisOutput = "Simulated output: No 0G inference provider configured.";
@@ -149,30 +159,21 @@ async function runAnalysisWorkflow(jobId: string) {
       reason: "No 0G inference provider configured.",
       providerAddress: null,
       model: computeModel,
-      serviceUrl: computeServiceUrl
+      serviceUrl: computeServiceUrl,
     };
 
-    if (providerAddress) {
+    const jobForAnalysis = await getJob(jobId);
+
+    if (providerAddress && jobForAnalysis) {
       try {
-        keeperRun.logs.push({
-          id: `log_${Date.now()}`,
-          runId: job.keeperhubRunId!,
-          timestamp: new Date().toISOString(),
-          level: "info",
-          message: `Calling 0G Compute provider: ${providerAddress}`,
-          metadata: {}
-        });
-
-        // Use the dataset we got from inputMetadata (if any)
-        const csvData = job.inputMetadata?.csvText as string || "Dose,Response\n10,20\n20,45\n30,85\n40,95";
-
+        await addLog("info", `Calling 0G Compute provider: ${providerAddress}`);
+        const csvData = (jobForAnalysis.inputMetadata?.csvText as string) || "Dose,Response\n10,20\n20,45\n30,85\n40,95";
         const result = await runInference({
           providerAddress,
           systemPrompt: "You are an expert scientific data analyzer. Summarize the provided data.",
-          userPrompt: `Analyze this CSV dataset: \n\n${csvData}`,
+          userPrompt: `Analyze this CSV dataset:\n\n${csvData}`,
           maxTokens: 256,
         });
-
         analysisOutput = result.text;
         inferenceChatId = result.chatId;
         inferenceVerified = result.verified;
@@ -184,106 +185,105 @@ async function runAnalysisWorkflow(jobId: string) {
           chatId: result.chatId,
           verified: result.verified,
           summary: result.text,
-          raw: result.raw
+          raw: result.raw,
         };
-
-        keeperRun.logs.push({
-          id: `log_${Date.now()}`,
-          runId: job.keeperhubRunId!,
-          timestamp: new Date().toISOString(),
-          level: "info",
-          message: `0G Compute returned successfully. ZG-Res-Key: ${result.chatId || 'none'}`,
-          metadata: { verified: result.verified }
-        });
+        await addLog("info", `0G Compute returned successfully. ZG-Res-Key: ${result.chatId || "none"}`);
       } catch (err: unknown) {
-        keeperRun.logs.push({
-          id: `log_${Date.now()}`,
-          runId: job.keeperhubRunId!,
-          timestamp: new Date().toISOString(),
-          level: "error",
-          message: `0G Compute failed: ${err instanceof Error ? err.message : String(err)}`,
-          metadata: {}
-        });
+        await addLog("error", `0G Compute failed: ${err instanceof Error ? err.message : String(err)}`);
         analysisOutput = "Failed to run 0G Compute inference.";
-        zeroGCompute = {
-          mode: "failed",
-          providerAddress,
-          model: computeModel,
-          serviceUrl: computeServiceUrl,
-          error: err instanceof Error ? err.message : String(err)
-        };
+        zeroGCompute = { mode: "failed", providerAddress, model: computeModel, serviceUrl: computeServiceUrl, error: err instanceof Error ? err.message : String(err) };
       }
     }
 
-    job.analyzerStatus = "completed";
-    job.criticStatus = "running";
-    job.status = "reviewing";
-    jobsStore.set(jobId, job);
+    const jobAfterAnalysis = await getJob(jobId);
+    if (!jobAfterAnalysis) return;
+    jobAfterAnalysis.analyzerStatus = "completed";
+    jobAfterAnalysis.criticStatus = "running";
+    jobAfterAnalysis.status = "reviewing";
+    await setJob(jobId, jobAfterAnalysis);
 
-    messages.push({
+    await pushMessage({
       id: `msg_${Date.now()}_3`,
       jobId,
       sender: "analyzer",
       receiver: "critic",
       type: "analysis.completed",
       timestamp: new Date().toISOString(),
-      payload: { output: analysisOutput, zgChatId: inferenceChatId }
+      payload: { output: analysisOutput, zgChatId: inferenceChatId },
     });
 
-    keeperRun.raw.nodeStatuses.push({ nodeId: "critic", status: "Running" });
-    keeperRun.raw.execution.executionTrace.push("critic");
+    const keeperAfterAnalysis = (await getKeeperHubRun(jobId)) as LocalKeeperHubRun | null;
+    if (keeperAfterAnalysis) {
+      await setKeeperHubRun(jobId, {
+        ...keeperAfterAnalysis,
+        raw: {
+          nodeStatuses: [...keeperAfterAnalysis.raw.nodeStatuses, { nodeId: "critic", status: "Running" }],
+          execution: { executionTrace: [...keeperAfterAnalysis.raw.execution.executionTrace, "critic"] },
+        },
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
-    // ----------------------------------------------------------------------
     // CRITIC
-    // ----------------------------------------------------------------------
     await delay(1500);
-    job.criticStatus = "completed";
-    job.reporterStatus = "running";
-    job.status = "reporting";
-    jobsStore.set(jobId, job);
+    const jobAfterCritic = await getJob(jobId);
+    if (!jobAfterCritic) return;
+    jobAfterCritic.criticStatus = "completed";
+    jobAfterCritic.reporterStatus = "running";
+    jobAfterCritic.status = "reporting";
+    await setJob(jobId, jobAfterCritic);
 
-    messages.push({
+    await pushMessage({
       id: `msg_${Date.now()}_4`,
       jobId,
       sender: "critic",
       receiver: "reporter",
       type: "critic.reviewed",
       timestamp: new Date().toISOString(),
-      payload: { score: 0.95 }
+      payload: { score: 0.95 },
     });
 
-    keeperRun.raw.nodeStatuses.push({ nodeId: "reporter", status: "Running" });
-    keeperRun.raw.execution.executionTrace.push("reporter");
+    const keeperAfterCritic = (await getKeeperHubRun(jobId)) as LocalKeeperHubRun | null;
+    if (keeperAfterCritic) {
+      await setKeeperHubRun(jobId, {
+        ...keeperAfterCritic,
+        raw: {
+          nodeStatuses: [...keeperAfterCritic.raw.nodeStatuses, { nodeId: "reporter", status: "Running" }],
+          execution: { executionTrace: [...keeperAfterCritic.raw.execution.executionTrace, "reporter"] },
+        },
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
-    // ----------------------------------------------------------------------
-    // REPORTER & FINISH
-    // ----------------------------------------------------------------------
+    // REPORTER
     await delay(1000);
-    
     const resultId = `res_${Date.now()}`;
-    job.reporterStatus = "completed";
-    job.status = "completed";
-    job.resultId = resultId;
-    jobsStore.set(jobId, job);
 
-    messages.push({
+    const jobAfterReporter = await getJob(jobId);
+    if (!jobAfterReporter) return;
+    jobAfterReporter.reporterStatus = "completed";
+    jobAfterReporter.status = "completed";
+    jobAfterReporter.resultId = resultId;
+    await setJob(jobId, jobAfterReporter);
+
+    await pushMessage({
       id: `msg_${Date.now()}_5`,
       jobId,
       sender: "reporter",
       receiver: "api",
       type: "report.generated",
       timestamp: new Date().toISOString(),
-      payload: { resultId }
+      payload: { resultId },
     });
 
-    resultsStore.set(resultId, {
+    await setResult(jobId, {
       id: resultId,
       jobId,
       summary: "Analysis completed. " + analysisOutput,
       confidence: 0.95,
       keyFindings: [
         "Data was processed using 0G Compute Network.",
-        `Inference Provider: ${providerAddress || 'None (simulated)'}`
+        `Inference Provider: ${providerAddress || "None (simulated)"}`,
       ],
       structuredJson: {
         estimatedDl50: 22.4,
@@ -293,31 +293,19 @@ async function runAnalysisWorkflow(jobId: string) {
       },
       explanation: "This workflow used 0G Compute to run the analysis.",
       provenanceId: inferenceChatId || `prov_${Date.now()}`,
-      completedAt: new Date().toISOString()
+      completedAt: new Date().toISOString(),
     });
 
-    keeperRun.state = "completed";
-    keeperRun.logs.push({
-      id: `log_${Date.now()}`,
-      runId: job.keeperhubRunId!,
-      timestamp: new Date().toISOString(),
-      level: "info",
-      message: "Workflow finished successfully.",
-      metadata: {}
-    });
-
+    await patchKeeper({ state: "completed" });
+    await addLog("info", "Workflow finished successfully.");
   } catch (err) {
-    job.status = "failed";
-    jobsStore.set(jobId, job);
-    keeperRun.state = "failed";
-    keeperRun.logs.push({
-      id: `log_${Date.now()}`,
-      runId: job.keeperhubRunId!,
-      timestamp: new Date().toISOString(),
-      level: "error",
-      message: `Workflow failed: ${err instanceof Error ? err.message : String(err)}`,
-      metadata: {}
-    });
+    const failedJob = await getJob(jobId);
+    if (failedJob) {
+      failedJob.status = "failed";
+      await setJob(jobId, failedJob);
+    }
+    await patchKeeper({ state: "failed" });
+    await addLog("error", `Workflow failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
