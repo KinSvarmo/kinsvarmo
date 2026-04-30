@@ -3,8 +3,16 @@ import type { ClassroomAssignment } from "@kingsvarmo/shared";
 import { getAllAssignments, setAssignment, addAssignmentId } from "@/lib/store";
 
 export async function GET() {
-  const assignments = await getAllAssignments();
-  return NextResponse.json({ assignments });
+  try {
+    const assignments = await getAllAssignments();
+    return NextResponse.json({ assignments });
+  } catch (err: unknown) {
+    console.error("[GET /api/classroom/assignments]", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: Request) {

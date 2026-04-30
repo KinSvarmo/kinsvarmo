@@ -31,7 +31,7 @@ export default function SubmitPage({ params }: { params: Promise<{ assignmentId:
   useEffect(() => {
     fetchJson<{ assignment: ClassroomAssignment }>(`/api/classroom/assignments/${assignmentId}`)
       .then((r) => setAssignment(r.assignment))
-      .catch(() => {});
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load assignment"));
   }, [assignmentId]);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {

@@ -8,11 +8,12 @@ import { fetchJson } from "@/lib/api";
 export default function ClassroomPage() {
   const [assignments, setAssignments] = useState<ClassroomAssignment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchJson<{ assignments: ClassroomAssignment[] }>("/api/classroom/assignments")
       .then((r) => setAssignments(r.assignments))
-      .catch(() => {})
+      .catch((err) => setApiError(err instanceof Error ? err.message : "Failed to load assignments"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -33,6 +34,8 @@ export default function ClassroomPage() {
 
       {loading ? (
         <div className="callout callout-info">Loading assignments…</div>
+      ) : apiError ? (
+        <div className="callout callout-error">Could not load assignments: {apiError}</div>
       ) : assignments.length === 0 ? (
         <div className="glass" style={{ padding: 40, textAlign: "center" }}>
           <p style={{ color: "var(--text-2)", marginBottom: 20 }}>No assignments yet.</p>
