@@ -518,8 +518,8 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
           <div style={{ fontSize: "3rem", marginBottom: 16 }}>🚀</div>
           <h1 style={{ fontSize: "1.8rem", marginBottom: 12 }}>Analysis Queued</h1>
           <p style={{ color: "var(--text-2)", marginBottom: 24, lineHeight: 1.6 }}>
-            Your job has been submitted. The agent swarm will coordinate via Gensyn AXL and execute through KeeperHub.
-            Results will appear once the workflow completes.
+            Job submitted. Planner, Analyzer, Critic, and Reporter will coordinate via Gensyn AXL and the run is tracked by KeeperHub.
+            The result appears once the workflow completes.
           </p>
           <div className="tx-panel" style={{ marginBottom: 24, textAlign: "left" }}>
             {txHash && (
@@ -651,7 +651,7 @@ export default function AgentRunPage({ params }: { params: Promise<{ slug: strin
                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: 1 }}>
                   <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
                 </svg>
-                <span>Your dataset is uploaded to 0G Storage and only accessible by the authorized analysis execution. The agent&apos;s logic remains encrypted and private at all times.</span>
+                <span>Your dataset is uploaded to 0G Storage and only accessible during the authorized analysis execution. The agent&apos;s logic stays encrypted on-chain.</span>
               </div>
             </div>
           )}

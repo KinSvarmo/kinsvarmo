@@ -5,12 +5,12 @@ const steps = [
   {
     icon: "🔬",
     title: "Researchers Mint",
-    desc: "Scientists publish analysis logic as encrypted iNFTs on 0G, protecting their IP while monetizing it.",
+    desc: "Researchers publish analysis agents as iNFTs on 0G. The iNFT records ownership, sets a price, and controls who can run the agent.",
   },
   {
     icon: "📤",
     title: "Users Upload",
-    desc: "Upload any compatible dataset and get an instant cost quote in 0G token.",
+    desc: "Upload a dataset, review the cost in OG token, and authorize one run.",
   },
   {
     icon: "🤖",
@@ -120,7 +120,7 @@ export default function HomePage() {
         <div className="container">
           <p className="eyebrow" style={{ marginBottom: 12 }}>How it works</p>
           <h2 style={{ fontSize: "clamp(1.8rem, 4vw, 2.8rem)", marginBottom: 48 }}>
-            Four steps to auditable science
+            How it works
           </h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 20 }}>
             {steps.map((step, i) => (
@@ -149,10 +149,10 @@ export default function HomePage() {
             <div style={{ position: "relative", zIndex: 1 }}>
               <p className="eyebrow" style={{ marginBottom: 16 }}>Start now</p>
               <h2 style={{ fontSize: "clamp(1.6rem, 4vw, 2.4rem)", marginBottom: 16 }}>
-                Ready to run private analysis on 0G?
+                Run your first job on 0G
               </h2>
               <p style={{ color: "var(--text-2)", marginBottom: 32, maxWidth: 480, margin: "0 auto 32px" }}>
-                Connect your wallet, browse agents, and launch your first analysis in minutes.
+                Connect your wallet, pick an agent, upload a dataset, and get a traceable result.
               </p>
               <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
                 <Link href="/agents" className="btn btn-primary btn-lg">Browse Agents</Link>
