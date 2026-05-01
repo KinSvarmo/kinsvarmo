@@ -23,9 +23,14 @@ const shouldStartLocalAxlNodes =
 
 const shouldStartWorkers = process.env.AXL_START_WORKERS !== "0";
 
+/**
+ * Railway sends traffic to process.env.PORT.
+ * The gateway must own that public port immediately.
+ * The real API runs on an internal port behind the gateway.
+ */
 const publicPort = resolvePublicPort();
 const apiPort = resolveInternalApiPort(publicPort);
-const gatewayPort = process.env.DISABLE_API_GATEWAY === "1" ? undefined : publicPort;
+const gatewayPort = publicPort;
 
 const localAxlEnv =
   shouldStartLocalAxlNodes || process.env.AXL_TRANSPORT !== "real"
@@ -37,7 +42,10 @@ let childEnv = {
   ...localAxlEnv,
   NODE_ENV: process.env.NODE_ENV ?? "production",
 
-  // The API runs internally. Railway/public health traffic goes to the gateway.
+  /**
+   * Force the API child process to use the internal port.
+   * Do not let it bind to Railway's public PORT.
+   */
   API_PORT: apiPort,
   PORT: apiPort
 };
@@ -94,16 +102,24 @@ async function main(): Promise<void> {
       startWorkers: shouldStartWorkers,
       publicPort,
       apiPort,
-      gatewayPort: gatewayPort ?? null,
-      platformPort: process.env.PORT ?? null,
-      apiGatewayPort: process.env.API_GATEWAY_PORT ?? null,
-      railwayHealthPort: process.env.RAILWAY_HEALTH_PORT ?? null,
-      internalApiPort: process.env.INTERNAL_API_PORT ?? null,
-      axlRealDir: process.env.AXL_REAL_DIR ?? null
+      gatewayPort,
+      PORT: process.env.PORT ?? null,
+      INTERNAL_API_PORT: process.env.INTERNAL_API_PORT ?? null,
+      API_PORT: process.env.API_PORT ?? null,
+      HTTP_PORT: process.env.HTTP_PORT ?? null,
+      API_GATEWAY_PORT: process.env.API_GATEWAY_PORT ?? null,
+      RAILWAY_HEALTH_PORT: process.env.RAILWAY_HEALTH_PORT ?? null,
+      DISABLE_API_GATEWAY: process.env.DISABLE_API_GATEWAY ?? null,
+      AXL_REAL_DIR: process.env.AXL_REAL_DIR ?? null
     })
   );
 
-  startGatewayIfNeeded();
+  /**
+   * Start this before AXL and API.
+   * Railway healthcheck must get a response immediately.
+   */
+  console.log("[startup] Starting API gateway before AXL/API");
+  startGateway();
 
   if (shouldStartRealAxlNodes) {
     console.log("[startup] Starting real AXL nodes");
@@ -149,35 +165,17 @@ async function main(): Promise<void> {
   probeApiHealthSoon();
 }
 
-function startGatewayIfNeeded(): void {
-  if (!gatewayPort) {
-    console.warn(
-      JSON.stringify({
-        event: "api-gateway.skipped",
-        reason: "gateway disabled",
-        publicPort,
-        apiPort
-      })
-    );
-
-    return;
-  }
-
-  if (gatewayPort === apiPort) {
-    console.error(
-      JSON.stringify({
-        event: "api-gateway.invalid_ports",
-        reason: "gateway port and api port must be different",
-        gatewayPort,
-        apiPort
-      })
-    );
-
-    stopAll(1);
-    return;
-  }
-
+function startGateway(): void {
   const port = Number(gatewayPort);
+
+  console.log(
+    JSON.stringify({
+      event: "api-gateway.start_attempt",
+      publicPort,
+      apiPort,
+      gatewayPort
+    })
+  );
 
   if (!Number.isFinite(port) || port <= 0) {
     console.error(
@@ -191,9 +189,27 @@ function startGatewayIfNeeded(): void {
     return;
   }
 
+  if (gatewayPort === apiPort) {
+    console.error(
+      JSON.stringify({
+        event: "api-gateway.invalid_ports",
+        reason: "gatewayPort and apiPort must be different",
+        gatewayPort,
+        apiPort
+      })
+    );
+
+    stopAll(1);
+    return;
+  }
+
   gatewayServer = createServer((incoming, outgoing) => {
     const url = incoming.url ?? "/";
 
+    /**
+     * Railway healthcheck endpoint.
+     * This intentionally does not wait for AXL, workers, DB, or API readiness.
+     */
     if (url.startsWith("/health")) {
       outgoing.writeHead(200, {
         "content-type": "application/json; charset=utf-8"
@@ -213,6 +229,9 @@ function startGatewayIfNeeded(): void {
       return;
     }
 
+    /**
+     * Proxy all non-health requests to the real API.
+     */
     const upstream = request(
       {
         hostname: "127.0.0.1",
@@ -269,12 +288,7 @@ function startGatewayIfNeeded(): void {
 }
 
 function resolvePublicPort(): string {
-  return (
-    process.env.API_GATEWAY_PORT ??
-    process.env.RAILWAY_HEALTH_PORT ??
-    process.env.PORT ??
-    "8080"
-  );
+  return process.env.PORT ?? "8080";
 }
 
 function resolveInternalApiPort(currentPublicPort: string): string {
