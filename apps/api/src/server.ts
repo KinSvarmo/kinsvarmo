@@ -86,6 +86,41 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     zeroG: getZeroGIntegrationStatus()
   }));
 
+  server.get("/api/axl/topology", async () => {
+    const participants = ["api", "planner", "analyzer", "critic", "reporter"] as const;
+    const nodes = await Promise.all(
+      participants.map(async (participant) => {
+        try {
+          const topology = await axlClient.topology(participant);
+
+          return {
+            participant,
+            configured: true,
+            reachable: true,
+            peerId: topology.ourPublicKey ?? null,
+            ipv6: topology.ourIpv6 ?? null,
+            peers: topology.peers,
+            tree: topology.tree
+          };
+        } catch (caught) {
+          return {
+            participant,
+            configured: false,
+            reachable: false,
+            peerId: null,
+            ipv6: null,
+            error: caught instanceof Error ? caught.message : "Topology unavailable"
+          };
+        }
+      })
+    );
+
+    return {
+      transport: process.env.AXL_TRANSPORT ?? "local",
+      nodes
+    };
+  });
+
   server.get("/api/agents", async () => ({
     agents: store.listAgents()
   }));

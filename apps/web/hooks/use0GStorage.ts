@@ -6,11 +6,11 @@ import { BrowserProvider, ethers } from "ethers";
 import { bytesToHex, generateAes256Key, uploadBrowserFile } from "@kingsvarmo/zero-g";
 import { numberToHex } from "viem";
 import { ogTestnet } from "@/lib/chain";
+import { getBrowserZeroGIndexerRpc } from "@/lib/zero-g-storage";
 
 const ZERO_G_TESTNET = {
   rpcUrl: "https://evmrpc-testnet.0g.ai",
-  indexerRpc:
-    process.env.NEXT_PUBLIC_0G_INDEXER_RPC ?? "https://indexer-storage-testnet-turbo.0g.ai",
+  indexerRpc: getBrowserZeroGIndexerRpc(),
 } as const;
 
 export function use0GStorage() {

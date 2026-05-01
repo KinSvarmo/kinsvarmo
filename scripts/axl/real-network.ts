@@ -34,18 +34,21 @@ export function getRealAxlPaths(
 
 export function getRealAxlNodes(
   paths = getRealAxlPaths(),
-  portOffset = parseRealPortOffset()
+  portOffset = parseRealPortOffset(),
+  participants = parseRealNodeParticipants()
 ): RealAxlNode[] {
   const hubPeer = `tls://127.0.0.1:${9101 + portOffset}`;
+  const hubListenHost = process.env.AXL_REAL_HUB_LISTEN_HOST ?? "127.0.0.1";
+  const hubListen = `tls://${hubListenHost}:${9101 + portOffset}`;
 
-  return [
+  const nodes: RealAxlNode[] = [
     {
       participant: "api",
       apiPort: 9002 + portOffset,
       tcpPort: 7000 + portOffset,
       keyPath: join(paths.keyDir, "api.pem"),
       configPath: join(paths.configDir, "api.json"),
-      listen: [hubPeer],
+      listen: [hubListen],
       peers: []
     },
     {
@@ -85,6 +88,8 @@ export function getRealAxlNodes(
       peers: [hubPeer]
     }
   ];
+
+  return nodes.filter((node) => participants.includes(node.participant));
 }
 
 export function prepareRealAxlFiles(
@@ -194,6 +199,30 @@ export function parseRealPortOffset(args = process.argv): number {
   const parsed = Number(rawValue);
 
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function parseRealNodeParticipants(
+  value = process.env.AXL_REAL_NODE_PARTICIPANTS
+): AxlParticipant[] {
+  if (!value) {
+    return [...localAxlParticipants];
+  }
+
+  const participants = value
+    .split(",")
+    .map((participant) => participant.trim())
+    .filter(Boolean);
+
+  for (const participant of participants) {
+    if (!localAxlParticipants.includes(participant as AxlParticipant)) {
+      throw new Error(
+        `Unknown AXL_REAL_NODE_PARTICIPANTS value: ${participant}. ` +
+          `Expected one of ${localAxlParticipants.join(", ")}.`
+      );
+    }
+  }
+
+  return participants as AxlParticipant[];
 }
 
 export function isRealTransport(): boolean {

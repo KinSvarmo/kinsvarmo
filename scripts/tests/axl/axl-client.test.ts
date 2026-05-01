@@ -12,6 +12,8 @@ import type { AxlMessage } from "@kingsvarmo/shared";
 const apiPeerId = "a".repeat(64);
 const plannerPeerId = "b".repeat(64);
 const analyzerPeerId = "c".repeat(64);
+const criticPeerId = "d".repeat(64);
+const reporterPeerId = "e".repeat(64);
 
 const demoMessage: AxlMessage = {
   id: "msg_axl_demo_001",
@@ -89,6 +91,43 @@ test("HTTP AXL client sends JSON messages through the documented /send endpoint"
 
     const messages = await client.listMessages("job_demo_001");
     assert.deepEqual(messages, [demoMessage]);
+  } finally {
+    await mockNode.close();
+  }
+});
+
+test("HTTP AXL client can send to a peer-only remote destination", async () => {
+  const mockNode = await startMockAxlNode({
+    peerId: criticPeerId
+  });
+  const message: AxlMessage = {
+    ...demoMessage,
+    id: "msg_axl_remote_reporter_001",
+    sender: "critic",
+    receiver: "reporter",
+    type: "critic.reviewed"
+  };
+
+  try {
+    const client = createHttpAxlClient({
+      nodes: {
+        critic: {
+          baseUrl: mockNode.baseUrl,
+          peerId: criticPeerId
+        },
+        reporter: {
+          peerId: reporterPeerId
+        }
+      },
+      requestTimeoutMs: 1_000
+    });
+
+    const receipt = await client.send(message, {
+      via: "critic"
+    });
+
+    assert.equal(receipt.destinationPeerId, reporterPeerId);
+    assert.equal(mockNode.requests.send[0]?.destinationPeerId, reporterPeerId);
   } finally {
     await mockNode.close();
   }

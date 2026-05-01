@@ -3,7 +3,7 @@ import type { AxlMessage, MessageParticipant } from "@kingsvarmo/shared";
 export type AxlParticipant = MessageParticipant;
 
 export interface AxlNodeEndpoint {
-  baseUrl: string;
+  baseUrl?: string;
   peerId?: string;
 }
 
@@ -72,13 +72,21 @@ export function createAxlNodeMapFromEnv(
     const baseUrl = env[urlEnv];
     const peerId = env[peerEnv];
 
-    if (!baseUrl) {
+    if (!baseUrl && !peerId) {
       continue;
     }
 
-    nodes[participant as AxlParticipant] = peerId
-      ? { baseUrl, peerId }
-      : { baseUrl };
+    const node: AxlNodeEndpoint = {};
+
+    if (baseUrl) {
+      node.baseUrl = baseUrl;
+    }
+
+    if (peerId) {
+      node.peerId = peerId;
+    }
+
+    nodes[participant as AxlParticipant] = node;
   }
 
   return nodes;
@@ -140,9 +148,8 @@ export function createHttpAxlClient(config: AxlClientConfig): AxlClient {
   return {
     async send(message, options) {
       const via = options?.via ?? message.sender;
-      const source = requireNode(config.nodes, via);
-      const destination = requireNode(config.nodes, message.receiver);
-      const destinationPeerId = requirePeerId(message.receiver, destination);
+      const source = requireHttpNode(config.nodes, via);
+      const destinationPeerId = requireDestinationPeerId(config.nodes, message.receiver);
       const body = JSON.stringify(message);
       const response = await fetchWithTimeout(
         fetchImpl,
@@ -175,7 +182,7 @@ export function createHttpAxlClient(config: AxlClientConfig): AxlClient {
       };
     },
     async receive(participant) {
-      const node = requireNode(config.nodes, participant);
+      const node = requireHttpNode(config.nodes, participant);
       const response = await fetchWithTimeout(
         fetchImpl,
         `${normalizeBaseUrl(node.baseUrl)}/recv`,
@@ -209,7 +216,7 @@ export function createHttpAxlClient(config: AxlClientConfig): AxlClient {
       return messages.filter((message) => message.jobId === jobId);
     },
     async topology(participant) {
-      const node = requireNode(config.nodes, participant);
+      const node = requireHttpNode(config.nodes, participant);
       const response = await fetchWithTimeout(
         fetchImpl,
         `${normalizeBaseUrl(node.baseUrl)}/topology`,
@@ -234,6 +241,10 @@ export function createHttpAxlClient(config: AxlClientConfig): AxlClient {
       await Promise.all(
         configured.map(async (participant) => {
           try {
+            if (!config.nodes[participant]?.baseUrl) {
+              nodes[participant] = true;
+              return;
+            }
             await this.topology(participant);
             nodes[participant] = true;
           } catch {
@@ -259,6 +270,28 @@ function requireNode(nodes: AxlNodeMap, participant: AxlParticipant): AxlNodeEnd
   }
 
   return node;
+}
+
+function requireHttpNode(nodes: AxlNodeMap, participant: AxlParticipant): AxlNodeEndpoint & {
+  baseUrl: string;
+} {
+  const node = requireNode(nodes, participant);
+
+  if (!node.baseUrl) {
+    throw new Error(`AXL node URL is not configured for participant: ${participant}`);
+  }
+
+  return {
+    ...node,
+    baseUrl: node.baseUrl
+  };
+}
+
+function requireDestinationPeerId(
+  nodes: AxlNodeMap,
+  participant: AxlParticipant
+): string {
+  return requirePeerId(participant, requireNode(nodes, participant));
 }
 
 function requirePeerId(participant: AxlParticipant, node: AxlNodeEndpoint): string {

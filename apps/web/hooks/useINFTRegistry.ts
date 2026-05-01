@@ -6,12 +6,12 @@ import { INFTRegistryABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { ogTestnet } from "@/lib/chain";
 import { downloadBrowserFile } from "@kingsvarmo/zero-g";
 import { numberToHex, type Address } from "viem";
+import { getBrowserZeroGIndexerRpc } from "@/lib/zero-g-storage";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 const ZERO_G_STORAGE = {
   rpcUrl: "https://evmrpc-testnet.0g.ai",
-  indexerRpc:
-    process.env.NEXT_PUBLIC_0G_INDEXER_RPC ?? "https://indexer-storage-testnet-turbo.0g.ai",
+  indexerRpc: getBrowserZeroGIndexerRpc(),
 } as const;
 
 type TokenMetadataJSON = {

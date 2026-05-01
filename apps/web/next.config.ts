@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import { getZeroGIndexerDestination } from "./lib/zero-g-storage";
+
+const zeroGIndexerDestination = getZeroGIndexerDestination();
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@kingsvarmo/shared", "@0glabs/0g-serving-broker"],
@@ -49,11 +52,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/0g-indexer/:path*",
-        destination: "https://indexer-storage-testnet-standard.0g.ai/:path*",
+        destination: `${zeroGIndexerDestination}/:path*`,
       },
       {
         source: "/0g-indexer",
-        destination: "https://indexer-storage-testnet-standard.0g.ai",
+        destination: zeroGIndexerDestination,
       }
     ];
   },

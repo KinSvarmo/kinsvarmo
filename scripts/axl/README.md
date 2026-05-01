@@ -138,3 +138,38 @@ pnpm axl:real:demo
 ```
 
 Important: real AXL nodes use different HTTP API ports, but the generated config gives every node the same internal `tcp_port`. This is intentional. AXL sends messages to a peer's virtual IPv6 address on that shared transport port.
+
+## Remote Reporter Proof Mode
+
+Use this mode to prove that one agent can run outside the hosted backend while the job still completes through AXL.
+
+Railway should run only these AXL nodes and workers:
+
+```env
+AXL_TRANSPORT=real
+AXL_START_REAL_NODES=1
+AXL_START_LOCAL_NODES=0
+AXL_START_WORKERS=1
+AXL_REAL_NODE_PARTICIPANTS=api,planner,analyzer,critic
+AXL_WORKERS=planner,analyzer,critic
+AXL_REAL_HUB_LISTEN_HOST=0.0.0.0
+```
+
+Add a Railway TCP proxy for port `9101`. Use the generated host and port as `AXL_REMOTE_SEED_PEER` on the remote machine.
+
+Remote terminal 1:
+
+```bash
+AXL_REMOTE_SEED_PEER=tls://RAILWAY_TCP_HOST:RAILWAY_TCP_PORT pnpm axl:remote:reporter:node
+```
+
+Remote terminal 2:
+
+```bash
+export AXL_REMOTE_API_PEER_ID="$(curl -s https://kingsvarmoapi-production.up.railway.app/api/axl/topology | node -e 'let s=\"\"; process.stdin.on(\"data\", d => s += d); process.stdin.on(\"end\", () => console.log(JSON.parse(s).nodes.find((node) => node.participant === \"api\").peerId));')"
+pnpm axl:remote:reporter:env
+set -a; source /tmp/axl/kingsvarmo-configs/kinsvarmo-remote-reporter.env; set +a
+pnpm axl:remote:reporter:worker
+```
+
+Copy the printed `AXL_NODE_REPORTER_PEER_ID` into Railway, redeploy, then start a UI job. The job should wait at reporter until the remote reporter terminal is running.

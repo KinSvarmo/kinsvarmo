@@ -6,7 +6,7 @@ import { parsePortOffset } from "./local-network";
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const workerScript = join(currentDir, "agent-worker.ts");
 const portOffset = parsePortOffset();
-const workers = ["planner", "analyzer", "critic", "reporter"];
+const workers = parseWorkers();
 const children: ChildProcess[] = [];
 
 for (const worker of workers) {
@@ -49,4 +49,34 @@ function shutdown(): void {
   }
 
   setTimeout(() => process.exit(0), 250).unref();
+}
+
+function parseWorkers(): string[] {
+  const configured = process.env.AXL_WORKERS
+    ? process.env.AXL_WORKERS.split(",")
+        .map((worker) => worker.trim())
+        .filter(Boolean)
+    : ["planner", "analyzer", "critic", "reporter"];
+  const disabled = new Set(
+    (process.env.AXL_DISABLED_WORKERS ?? "")
+      .split(",")
+      .map((worker) => worker.trim())
+      .filter(Boolean)
+  );
+  const workers = configured.filter((worker) => !disabled.has(worker));
+  const allowed = new Set(["planner", "analyzer", "critic", "reporter"]);
+
+  for (const worker of workers) {
+    if (!allowed.has(worker)) {
+      throw new Error(
+        `Unknown AXL worker: ${worker}. Expected planner, analyzer, critic, reporter.`
+      );
+    }
+  }
+
+  if (workers.length === 0) {
+    throw new Error("No AXL workers configured.");
+  }
+
+  return workers;
 }
