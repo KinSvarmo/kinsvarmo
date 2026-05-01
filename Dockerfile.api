@@ -1,3 +1,10 @@
+FROM golang:1.25-bookworm AS axl-builder
+
+WORKDIR /src/axl
+
+RUN git clone --depth=1 https://github.com/gensyn-ai/axl.git . \
+  && go build -o /axl-node ./cmd/node/
+
 FROM node:20-bookworm-slim
 
 WORKDIR /app
@@ -5,8 +12,16 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+ENV AXL_REAL_DIR=/opt/axl
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
+
+RUN mkdir -p /opt/axl
+COPY --from=axl-builder /axl-node /opt/axl/node
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json

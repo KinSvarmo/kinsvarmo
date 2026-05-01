@@ -440,14 +440,6 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
                   >
                     Open Audit Bundle
                   </a>
-                  <a
-                    href="https://app.keeperhub.com/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-secondary btn-sm"
-                  >
-                    Open KeeperHub
-                  </a>
                   {job?.status === "failed" && (
                     <button
                       type="button"
