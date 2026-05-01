@@ -86,6 +86,8 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
   const [keeperHubError, setKeeperHubError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +174,29 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
   const latestMessage = orderedMessages.at(-1);
   const keeperHubTrace = getKeeperHubTrace(keeperHubRun?.raw);
   const keeperHubNodeStatuses = getKeeperHubNodeStatuses(keeperHubRun?.raw);
+  const workflowTimeline = getWorkflowTimeline({
+    job,
+    keeperHubRun,
+    messages: orderedMessages,
+    result
+  });
+
+  async function retryWorkflow() {
+    setRetrying(true);
+    setRetryError(null);
+
+    try {
+      const response = await fetchJson<JobResponse>(`/api/jobs/${jobId}/retry`, {
+        method: "POST"
+      });
+      setJob(response.job);
+      setResult(null);
+    } catch (caught) {
+      setRetryError(caught instanceof Error ? caught.message : "Unable to retry workflow");
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   if (!loadedOnce && !job) {
     return (
@@ -330,33 +355,48 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
 
           <section className="glass" style={{ padding: 22 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-              <p className="eyebrow">KeeperHub</p>
+              <p className="eyebrow">Workflow Audit</p>
               {keeperHubRun && <span className={keeperHubBadge(keeperHubRun.state)}>{keeperHubRun.state}</span>}
             </div>
             {!job?.keeperhubRunId ? (
               <div className="callout callout-info">
-                KeeperHub run ID will appear once the backend starts the workflow.
+                External run record will appear once the backend starts the workflow.
               </div>
             ) : keeperHubError ? (
               <div className="callout callout-warn">
-                KeeperHub run ID: {job.keeperhubRunId}
+                Audit run ID: {job.keeperhubRunId}
                 <br />
-                Status fetch failed: {keeperHubError}
+                Audit fetch failed: {keeperHubError}
               </div>
             ) : keeperHubRun ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <div className="job-detail-list">
-                  <Detail label="Execution ID" value={job.keeperhubRunId} monospace />
-                  <Detail label="Workflow" value={keeperHubRun.workflowId ?? "pgvk69uxp1yg9bfcmihz9"} monospace />
-                  <Detail label="Logs" value={`${keeperHubRun.logs.length}`} />
+                  <Detail label="Run record" value={job.keeperhubRunId} monospace />
+                  <Detail label="Template" value={keeperHubRun.workflowId ?? "pgvk69uxp1yg9bfcmihz9"} monospace />
+                  <Detail label="Audit logs" value={`${keeperHubRun.logs.length}`} />
+                </div>
+                <div className="callout callout-success" style={{ fontSize: "0.78rem", lineHeight: 1.55 }}>
+                  Independent workflow record: payload received, validated, and timestamped before the AXL swarm result was accepted.
+                </div>
+
+                <div>
+                  <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Execution proof timeline</p>
+                  <div className="keeperhub-node-list">
+                    {workflowTimeline.map((item) => (
+                      <div key={item.label} className="keeperhub-node-row">
+                        <span>{item.label}</span>
+                        <strong>{item.state}</strong>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {keeperHubTrace.length > 0 && (
                   <div>
-                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Execution trace</p>
+                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Audit path</p>
                     <div className="keeperhub-trace">
                       {keeperHubTrace.map((nodeId) => (
-                        <span key={nodeId} className="badge badge-muted">{nodeId}</span>
+                        <span key={nodeId} className="badge badge-muted">{formatKeeperHubNodeLabel(nodeId)}</span>
                       ))}
                     </div>
                   </div>
@@ -364,11 +404,11 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
 
                 {keeperHubNodeStatuses.length > 0 && (
                   <div>
-                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Node status</p>
+                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Audit checkpoints</p>
                     <div className="keeperhub-node-list">
                       {keeperHubNodeStatuses.map((node) => (
                         <div key={node.nodeId} className="keeperhub-node-row">
-                          <span>{node.nodeId}</span>
+                          <span>{formatKeeperHubNodeLabel(node.nodeId)}</span>
                           <strong>{node.status}</strong>
                         </div>
                       ))}
@@ -378,7 +418,7 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
 
                 {keeperHubRun.logs.length > 0 && (
                   <div>
-                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Recent logs</p>
+                    <p style={{ color: "var(--text-3)", fontSize: "0.74rem", marginBottom: 8 }}>Recent audit logs</p>
                     <div className="keeperhub-log-list">
                       {keeperHubRun.logs.slice(0, 5).map((entry) => (
                         <div key={entry.id} className="keeperhub-log-row">
@@ -390,12 +430,46 @@ export default function JobStatusPage({ params }: { params: Promise<{ jobId: str
                     </div>
                   </div>
                 )}
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <a
+                    href={`${API_BASE_URL}/api/jobs/${jobId}/audit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Open Audit Bundle
+                  </a>
+                  <a
+                    href="https://app.keeperhub.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Open KeeperHub
+                  </a>
+                  {job?.status === "failed" && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => void retryWorkflow()}
+                      disabled={retrying}
+                    >
+                      {retrying ? "Retrying..." : "Retry Workflow"}
+                    </button>
+                  )}
+                </div>
+                {retryError && (
+                  <div className="callout callout-error" style={{ fontSize: "0.78rem" }}>
+                    {retryError}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="callout callout-info">
-                Run ID: {job.keeperhubRunId}
+                Audit run ID: {job.keeperhubRunId}
                 <br />
-                Fetching KeeperHub execution state...
+                Fetching workflow audit state...
               </div>
             )}
           </section>
@@ -541,7 +615,7 @@ function summarizeKeeperHubLog(message: string): string {
       const status = typeof parsed.status === "string" ? parsed.status : undefined;
 
       if (nodeName && status) {
-        return `${nodeName}: ${status}`;
+        return `${formatKeeperHubNodeLabel(nodeName)}: ${status}`;
       }
     }
   } catch {
@@ -549,6 +623,66 @@ function summarizeKeeperHubLog(message: string): string {
   }
 
   return message.length > 120 ? `${message.slice(0, 117)}...` : message;
+}
+
+function getWorkflowTimeline(input: {
+  job: AnalysisJob | null;
+  keeperHubRun: KeeperHubRun | null;
+  messages: AxlMessage[];
+  result: AnalysisResult | null;
+}): Array<{ label: string; state: string }> {
+  const { job, keeperHubRun, messages, result } = input;
+  const hasReport = messages.some((message) => message.type === "report.generated");
+  const computeMode = result ? getZeroGComputeMode(result) : "pending";
+
+  return [
+    {
+      label: "0G usage authorized",
+      state: job?.paymentStatus === "authorized" ? "confirmed" : job?.paymentStatus ?? "pending"
+    },
+    {
+      label: "Workflow audit opened",
+      state: keeperHubRun?.state ?? (job?.keeperhubRunId ? "recorded" : "pending")
+    },
+    {
+      label: "AXL swarm completed",
+      state: hasReport ? "confirmed" : `${messages.length} messages`
+    },
+    {
+      label: "0G Compute proof",
+      state: computeMode === "real" ? "real" : computeMode
+    },
+    {
+      label: "Report hash bundle",
+      state: result?.provenanceId ? "ready" : "pending"
+    }
+  ];
+}
+
+function formatKeeperHubNodeLabel(value: string): string {
+  const normalized = value.toLowerCase();
+  const labels: Record<string, string> = {
+    "kinsvarmo-job-started": "Job received",
+    "kinsvarmo job started": "Job received",
+    "validate-job-payload": "Payload validated",
+    "validate job payload": "Payload validated",
+    "keeperhub-audit-log": "Audit log recorded",
+    "create keeperhub audit log": "Audit log recorded",
+    "prepare-axl-dispatch-audit": "AXL dispatch recorded",
+    "prepare axl dispatch audit": "AXL dispatch recorded",
+    "finalize-keeperhub-record": "Workflow record finalized",
+    "finalize keeperhub record": "Workflow record finalized"
+  };
+
+  if (labels[normalized]) {
+    return labels[normalized];
+  }
+
+  return value
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function getZeroGComputeMode(result: AnalysisResult): string {

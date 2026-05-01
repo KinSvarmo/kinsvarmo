@@ -1,8 +1,9 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { AxlClient } from "@kingsvarmo/axl-client";
-import type { KeeperHubClient } from "@kingsvarmo/keeperhub";
+import type { KeeperHubClient, KeeperHubLogEntry, KeeperHubRun } from "@kingsvarmo/keeperhub";
 import { supportedInputFormats, type AgentListing, type ClassroomAssignment, type JobCreateInput } from "@kingsvarmo/shared";
 import { getZeroGIntegrationStatus } from "@kingsvarmo/zero-g";
 import { createBackendAxlClient } from "./integrations/axl";
@@ -212,6 +213,52 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     };
   });
 
+  server.post("/api/jobs/:id/retry", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const job = store.getJob(id);
+
+    if (!job) {
+      return reply.code(404).send({
+        error: "job_not_found"
+      });
+    }
+
+    if (!["failed", "created"].includes(job.status)) {
+      return reply.code(409).send({
+        error: "job_retry_not_available",
+        message: "Only failed or unstarted jobs can be retried from this endpoint."
+      });
+    }
+
+    if (job.keeperhubRunId) {
+      try {
+        await keeperHubClient.retryRun(job.keeperhubRunId);
+      } catch {
+        // Some KeeperHub webhook executions do not expose a retry API. The
+        // KinSvarmo retry still creates a new audited run before AXL dispatch.
+      }
+    }
+
+    store.updateJob(id, {
+      status: "created",
+      plannerStatus: "pending",
+      analyzerStatus: "pending",
+      criticStatus: "pending",
+      reporterStatus: "pending"
+    });
+
+    await startAxlJobWorkflow({
+      job: store.getJob(id) ?? job,
+      axlClient,
+      keeperHubClient,
+      store
+    });
+
+    return {
+      job: store.getJob(id)
+    };
+  });
+
   server.get("/api/jobs/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
     const job = store.getJob(id);
@@ -253,6 +300,72 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
 
     return {
       result
+    };
+  });
+
+  server.get("/api/jobs/:id/audit", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const job = store.getJob(id);
+
+    if (!job) {
+      return reply.code(404).send({
+        error: "job_not_found"
+      });
+    }
+
+    const messages = store.listMessages(id);
+    const result = store.getResultByJobId(id);
+    const resultHash = result
+      ? createHash("sha256").update(JSON.stringify(result)).digest("hex")
+      : null;
+    let keeperHubRun: KeeperHubRun | null = null;
+    let keeperHubLogs: KeeperHubLogEntry[] = [];
+
+    if (job.keeperhubRunId) {
+      try {
+        const run = await keeperHubClient.getRun(job.keeperhubRunId);
+        const logs = await keeperHubClient.getRunLogs(job.keeperhubRunId);
+        keeperHubRun = run;
+        keeperHubLogs = logs;
+      } catch {
+        keeperHubRun = null;
+        keeperHubLogs = [];
+      }
+    }
+
+    return {
+      audit: {
+        jobId: id,
+        generatedAt: new Date().toISOString(),
+        state: job.status,
+        keeperHub: {
+          runId: job.keeperhubRunId ?? null,
+          workflowId: keeperHubRun?.workflowId ?? null,
+          state: keeperHubRun?.state ?? null,
+          logCount: keeperHubLogs.length,
+          logs: keeperHubLogs
+        },
+        axl: {
+          messageCount: messages.length,
+          completed: messages.some((message) => message.type === "report.generated"),
+          route: messages.map((message) => ({
+            id: message.id,
+            sender: message.sender,
+            receiver: message.receiver,
+            type: message.type,
+            timestamp: message.timestamp
+          }))
+        },
+        result: result
+          ? {
+              id: result.id,
+              provenanceId: result.provenanceId,
+              sha256: resultHash,
+              completedAt: result.completedAt
+            }
+          : null,
+        zeroGCompute: result ? extractZeroGCompute(result.structuredJson) : null
+      }
     };
   });
 
@@ -510,4 +623,22 @@ function parseAllowedOrigins(): string[] {
     .split(",")
     .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean);
+}
+
+function extractZeroGCompute(structuredJson: Record<string, unknown>): unknown {
+  const direct = structuredJson.zeroGCompute;
+
+  if (isRecord(direct)) {
+    return direct;
+  }
+
+  const nested = structuredJson.structuredJson;
+
+  return isRecord(nested) && isRecord(nested.zeroGCompute)
+    ? nested.zeroGCompute
+    : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
