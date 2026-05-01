@@ -17,6 +17,7 @@ const shouldStartLocalAxlNodes =
   process.env.AXL_TRANSPORT !== "real" &&
   process.env.AXL_START_LOCAL_NODES !== "0";
 const shouldStartWorkers = process.env.AXL_START_WORKERS !== "0";
+const apiPort = process.env.API_PORT ?? process.env.HTTP_PORT ?? "8080";
 const localAxlEnv =
   shouldStartLocalAxlNodes || process.env.AXL_TRANSPORT !== "real"
     ? buildLocalAxlEnv(Number(process.env.AXL_LOCAL_PORT_OFFSET ?? "0"))
@@ -24,7 +25,9 @@ const localAxlEnv =
 let childEnv = {
   ...process.env,
   ...localAxlEnv,
-  NODE_ENV: process.env.NODE_ENV ?? "production"
+  NODE_ENV: process.env.NODE_ENV ?? "production",
+  API_PORT: apiPort,
+  PORT: apiPort
 };
 
 process.on("SIGINT", stopAll);
@@ -42,7 +45,7 @@ async function main(): Promise<void> {
   console.log(`Start real AXL nodes: ${shouldStartRealAxlNodes ? "yes" : "no"}`);
   console.log(`Start local AXL nodes: ${shouldStartLocalAxlNodes ? "yes" : "no"}`);
   console.log(`Start agent workers: ${shouldStartWorkers ? "yes" : "no"}`);
-  console.log(`API port: ${process.env.PORT ?? "4000"}`);
+  console.log(`API port: ${apiPort}`);
 
   if (shouldStartRealAxlNodes) {
     start("axl:real:nodes", ["pnpm", "exec", "tsx", "scripts/axl/start-real-axl-network.ts"]);
