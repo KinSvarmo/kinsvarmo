@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createServer, request, type Server } from "node:http";
 import { buildLocalAxlEnv } from "../axl/local-network";
 import {
   buildRealAxlEnv,
@@ -9,6 +10,7 @@ import {
 const rootDir = process.cwd();
 const children: ChildProcess[] = [];
 let shuttingDown = false;
+let gatewayServer: Server | undefined;
 
 const shouldStartRealAxlNodes =
   process.env.AXL_TRANSPORT === "real" &&
@@ -18,6 +20,10 @@ const shouldStartLocalAxlNodes =
   process.env.AXL_START_LOCAL_NODES !== "0";
 const shouldStartWorkers = process.env.AXL_START_WORKERS !== "0";
 const apiPort = process.env.API_PORT ?? process.env.HTTP_PORT ?? "8080";
+const gatewayPort =
+  process.env.API_GATEWAY_PORT ??
+  process.env.RAILWAY_HEALTH_PORT ??
+  (apiPort !== "8080" ? "8080" : undefined);
 const localAxlEnv =
   shouldStartLocalAxlNodes || process.env.AXL_TRANSPORT !== "real"
     ? buildLocalAxlEnv(Number(process.env.AXL_LOCAL_PORT_OFFSET ?? "0"))
@@ -46,6 +52,7 @@ async function main(): Promise<void> {
   console.log(`Start local AXL nodes: ${shouldStartLocalAxlNodes ? "yes" : "no"}`);
   console.log(`Start agent workers: ${shouldStartWorkers ? "yes" : "no"}`);
   console.log(`API port: ${apiPort}`);
+  startGatewayIfNeeded();
 
   if (shouldStartRealAxlNodes) {
     start("axl:real:nodes", ["pnpm", "exec", "tsx", "scripts/axl/start-real-axl-network.ts"]);
@@ -71,6 +78,63 @@ async function main(): Promise<void> {
   }
 
   start("api", ["pnpm", "--filter", "@kingsvarmo/api", "start:prod"]);
+}
+
+function startGatewayIfNeeded(): void {
+  if (!gatewayPort || gatewayPort === apiPort) {
+    return;
+  }
+
+  const port = Number(gatewayPort);
+  if (!Number.isFinite(port) || port <= 0) {
+    console.warn(`Skipping API gateway: invalid port ${gatewayPort}`);
+    return;
+  }
+
+  gatewayServer = createServer((incoming, outgoing) => {
+    if (incoming.url?.startsWith("/health")) {
+      outgoing.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      outgoing.end(
+        JSON.stringify({
+          ok: true,
+          service: "kingsvarmo-api-gateway",
+          apiPort,
+          gatewayPort
+        })
+      );
+      return;
+    }
+
+    const upstream = request(
+      {
+        hostname: "127.0.0.1",
+        port: apiPort,
+        path: incoming.url,
+        method: incoming.method,
+        headers: incoming.headers
+      },
+      (response) => {
+        outgoing.writeHead(response.statusCode ?? 502, response.headers);
+        response.pipe(outgoing);
+      }
+    );
+
+    upstream.on("error", (caught) => {
+      outgoing.writeHead(502, { "content-type": "application/json; charset=utf-8" });
+      outgoing.end(
+        JSON.stringify({
+          error: "api_upstream_unavailable",
+          message: caught instanceof Error ? caught.message : "Unknown upstream error"
+        })
+      );
+    });
+
+    incoming.pipe(upstream);
+  });
+
+  gatewayServer.listen(port, "0.0.0.0", () => {
+    console.log(`API gateway listening at http://0.0.0.0:${port} -> http://127.0.0.1:${apiPort}`);
+  });
 }
 
 function start(label: string, command: [string, ...string[]]): void {
@@ -134,6 +198,8 @@ function stopAll(code = 0): void {
       child.kill("SIGTERM");
     }
   }
+
+  gatewayServer?.close();
 
   setTimeout(() => process.exit(code), 750).unref();
 }
