@@ -37,6 +37,6 @@ RUN pnpm install --frozen-lockfile --prod=false
 
 COPY . .
 
-EXPOSE 8080 9101 10101
+EXPOSE 8080 18080 9101 10101
 
 CMD ["pnpm", "deploy:api-stack"]
