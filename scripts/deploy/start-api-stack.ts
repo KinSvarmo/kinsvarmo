@@ -19,7 +19,7 @@ const shouldStartLocalAxlNodes =
   process.env.AXL_TRANSPORT !== "real" &&
   process.env.AXL_START_LOCAL_NODES !== "0";
 const shouldStartWorkers = process.env.AXL_START_WORKERS !== "0";
-const apiPort = process.env.API_PORT ?? process.env.HTTP_PORT ?? "8080";
+const apiPort = process.env.PORT ?? process.env.API_PORT ?? process.env.HTTP_PORT ?? "8080";
 const gatewayPort =
   process.env.API_GATEWAY_PORT ??
   process.env.RAILWAY_HEALTH_PORT ??
