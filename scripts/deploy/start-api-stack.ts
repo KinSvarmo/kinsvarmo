@@ -19,7 +19,7 @@ const shouldStartLocalAxlNodes =
   process.env.AXL_TRANSPORT !== "real" &&
   process.env.AXL_START_LOCAL_NODES !== "0";
 const shouldStartWorkers = process.env.AXL_START_WORKERS !== "0";
-const apiPort = process.env.PORT ?? process.env.API_PORT ?? process.env.HTTP_PORT ?? "8080";
+const apiPort = resolveApiPort();
 const gatewayPort =
   process.env.API_GATEWAY_PORT ??
   process.env.RAILWAY_HEALTH_PORT ??
@@ -135,6 +135,25 @@ function startGatewayIfNeeded(): void {
   gatewayServer.listen(port, "0.0.0.0", () => {
     console.log(`API gateway listening at http://0.0.0.0:${port} -> http://127.0.0.1:${apiPort}`);
   });
+}
+
+function resolveApiPort(): string {
+  if (process.env.API_PORT) {
+    return process.env.API_PORT;
+  }
+
+  if (process.env.HTTP_PORT) {
+    return process.env.HTTP_PORT;
+  }
+
+  const platformPort = process.env.PORT;
+  const axlHubPort = String(9101 + Number(process.env.AXL_REAL_PORT_OFFSET ?? "0"));
+
+  if (platformPort && platformPort !== axlHubPort) {
+    return platformPort;
+  }
+
+  return "8080";
 }
 
 function start(label: string, command: [string, ...string[]]): void {
