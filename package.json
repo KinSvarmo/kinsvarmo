@@ -23,6 +23,7 @@
     "demo:local": "tsx scripts/demo/start-local-demo.ts",
     "demo:check": "tsx scripts/demo/check-local-demo.ts",
     "deploy:api-stack": "tsx scripts/deploy/start-api-stack.ts",
+    "vercel-build": "pnpm --filter @kingsvarmo/web build",
     "build": "pnpm -r build",
     "test": "node --import tsx --test scripts/tests/**/*.test.ts",
     "test:axl": "node --import tsx --test scripts/tests/axl/*.test.ts",
@@ -35,6 +36,9 @@
     "@kingsvarmo/keeperhub": "workspace:*",
     "@kingsvarmo/shared": "workspace:*",
     "@kingsvarmo/zero-g": "workspace:*",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4"
   }

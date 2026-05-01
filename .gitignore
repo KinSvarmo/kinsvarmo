@@ -4,8 +4,11 @@ node_modules
 dist
 coverage
 .env
+.env.railway
 .env.local
 .env.*.local
 *.log
 *.tsbuildinfo
 .DS_Store
+.vercel
+.env*.local

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { buildLocalAxlEnv } from "../axl/local-network";
 
 const rootDir = process.cwd();
 const children: ChildProcess[] = [];
@@ -8,6 +9,15 @@ const shouldStartLocalAxlNodes =
   process.env.AXL_TRANSPORT !== "real" &&
   process.env.AXL_START_LOCAL_NODES !== "0";
 const shouldStartWorkers = process.env.AXL_START_WORKERS !== "0";
+const localAxlEnv =
+  shouldStartLocalAxlNodes || process.env.AXL_TRANSPORT !== "real"
+    ? buildLocalAxlEnv(Number(process.env.AXL_LOCAL_PORT_OFFSET ?? "0"))
+    : {};
+const childEnv = {
+  ...process.env,
+  ...localAxlEnv,
+  NODE_ENV: process.env.NODE_ENV ?? "production"
+};
 
 console.log("Starting KinSvarmo production API stack");
 console.log(`Mode: ${process.env.NODE_ENV ?? "production"}`);
@@ -33,10 +43,7 @@ function start(label: string, command: [string, ...string[]]): void {
   const [bin, ...args] = command;
   const child = spawn(bin, args, {
     cwd: rootDir,
-    env: {
-      ...process.env,
-      NODE_ENV: process.env.NODE_ENV ?? "production"
-    },
+    env: childEnv,
     stdio: ["ignore", "pipe", "pipe"]
   });
 
