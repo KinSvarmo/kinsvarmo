@@ -76,6 +76,11 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
 
   server.get("/health", async () => ({
     ok: true,
+    service: "kingsvarmo-api"
+  }));
+
+  server.get("/ready", async () => ({
+    ok: true,
     service: "kingsvarmo-api",
     axl: await axlClient.health(),
     keeperHub: await keeperHubClient.health(),
