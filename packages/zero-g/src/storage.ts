@@ -31,6 +31,17 @@ export interface UploadResult {
   txHash: string;
 }
 
+export interface ServerUploadInput {
+  bytes: Uint8Array;
+  filename: string;
+  contentType?: string;
+  network: ZeroGNetworkConfig;
+  privateKey: string;
+  onStatus?: (message: string) => void;
+  encryption?: EncryptionInput;
+  resourceLabel?: string;
+}
+
 export interface DownloadResult {
   blob: Blob;
   filename: string;
@@ -112,6 +123,26 @@ export async function uploadBrowserFile(
   }
 
   return { rootHash: tx.rootHashes[0] ?? "", txHash: tx.txHashes[0] ?? "" };
+}
+
+export async function uploadServerBytes(input: ServerUploadInput): Promise<UploadResult> {
+  const provider = new ethers.JsonRpcProvider(input.network.rpcUrl);
+  const privateKey = input.privateKey.startsWith("0x")
+    ? input.privateKey
+    : `0x${input.privateKey}`;
+  const signer = new ethers.Wallet(privateKey, provider);
+  const file = new File([input.bytes as BlobPart], input.filename, {
+    type: input.contentType ?? "application/octet-stream",
+  });
+
+  return uploadBrowserFile(
+    file,
+    input.network,
+    signer,
+    input.onStatus,
+    input.encryption,
+    input.resourceLabel,
+  );
 }
 
 export async function downloadBrowserFile(

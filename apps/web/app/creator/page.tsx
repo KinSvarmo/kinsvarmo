@@ -200,7 +200,7 @@ export default function CreatorPage() {
 
     setIsStoreFlowRunning(true);
     try {
-      const storageUri = await uploadFile(datasetFile);
+      const storageUri = await uploadFile(datasetFile, "intelligence");
       if (!storageUri) return;
       setDatasetURI(storageUri);
 
@@ -209,7 +209,7 @@ export default function CreatorPage() {
         `${form.slug || form.name || "agent"}.metadata.json`,
         { type: "application/json" },
       );
-      const uploadedMetadataURI = await uploadFile(metadataFile);
+      const uploadedMetadataURI = await uploadFile(metadataFile, "metadata");
       if (uploadedMetadataURI) {
         setMetadataURI(uploadedMetadataURI);
       }

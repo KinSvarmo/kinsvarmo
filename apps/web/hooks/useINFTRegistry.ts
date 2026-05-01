@@ -4,15 +4,9 @@ import { useEffect, useState } from "react";
 import { useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { INFTRegistryABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { ogTestnet } from "@/lib/chain";
-import { downloadBrowserFile } from "@kingsvarmo/zero-g";
 import { numberToHex, type Address } from "viem";
-import { getBrowserZeroGIndexerRpc } from "@/lib/zero-g-storage";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-const ZERO_G_STORAGE = {
-  rpcUrl: "https://evmrpc-testnet.0g.ai",
-  indexerRpc: getBrowserZeroGIndexerRpc(),
-} as const;
 
 type TokenMetadataJSON = {
   name?: string;
@@ -155,14 +149,14 @@ export function useTokenMetadata(tokenURI: string | undefined) {
       setError(null);
 
       try {
-        const result = await downloadBrowserFile(
-          parsed.rootHash,
-          ZERO_G_STORAGE,
-          undefined,
-          parsed.symmetricKey ? { symmetricKey: parsed.symmetricKey } : undefined,
-        );
-        const text = await result.blob.text();
-        const json = JSON.parse(text) as TokenMetadataJSON;
+        const response = await fetch(`/api/0g/storage/download?uri=${encodeURIComponent(tokenURI)}`);
+        const body = (await response.json()) as { text?: string; error?: string };
+
+        if (!response.ok || typeof body.text !== "string") {
+          throw new Error(body.error || "Failed to load token metadata");
+        }
+
+        const json = JSON.parse(body.text) as TokenMetadataJSON;
         if (!cancelled) {
           setData(json);
         }

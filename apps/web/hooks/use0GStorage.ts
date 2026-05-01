@@ -2,23 +2,19 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
-import { BrowserProvider, ethers } from "ethers";
-import { bytesToHex, generateAes256Key, uploadBrowserFile } from "@kingsvarmo/zero-g";
-import { numberToHex } from "viem";
-import { ogTestnet } from "@/lib/chain";
-import { getBrowserZeroGIndexerRpc } from "@/lib/zero-g-storage";
 
-const ZERO_G_TESTNET = {
-  rpcUrl: "https://evmrpc-testnet.0g.ai",
-  indexerRpc: getBrowserZeroGIndexerRpc(),
-} as const;
+type StorageUploadResponse = {
+  uri?: string;
+  error?: string;
+  hint?: string;
+};
 
 export function use0GStorage() {
   const { address, isConnected } = useAccount();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const uploadFile = async (file: File): Promise<string | null> => {
+  const uploadFile = async (file: File, label: string = "file"): Promise<string | null> => {
     if (!isConnected || !address) {
       setUploadError("Wallet not connected");
       return null;
@@ -28,58 +24,22 @@ export function use0GStorage() {
     setUploadError(null);
 
     try {
-      const ethereum = (window as any).ethereum as
-        | {
-            request(args: { method: string; params?: unknown[] }): Promise<unknown>;
-          }
-        | undefined;
-      if (!ethereum) throw new Error("MetaMask is not installed!");
+      const formData = new FormData();
+      formData.set("file", file);
+      formData.set("label", label);
 
-      const currentChainId = await ethereum.request({ method: "eth_chainId" });
-      const targetChainIdHex = numberToHex(ogTestnet.id);
+      const response = await fetch("/api/0g/storage/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const body = (await response.json()) as StorageUploadResponse;
 
-      if (currentChainId !== targetChainIdHex) {
-        try {
-          await ethereum.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: targetChainIdHex }],
-          });
-        } catch (switchError: any) {
-          if (switchError?.code !== 4902) {
-            throw new Error("Please switch your wallet to 0G Galileo Testnet before uploading.");
-          }
-
-          await ethereum.request({
-            method: "wallet_addEthereumChain",
-            params: [
-              {
-                chainId: targetChainIdHex,
-                chainName: ogTestnet.name,
-                nativeCurrency: ogTestnet.nativeCurrency,
-                rpcUrls: ogTestnet.rpcUrls.default.http,
-                blockExplorerUrls: [ogTestnet.blockExplorers.default.url],
-              },
-            ],
-          });
-        }
+      if (!response.ok || !body.uri) {
+        const detail = [body.error, body.hint].filter(Boolean).join(" ");
+        throw new Error(detail || "Failed to upload file to 0G Storage");
       }
 
-      const provider = new BrowserProvider(ethereum);
-      await provider.send("eth_requestAccounts", []);
-      const signer = await provider.getSigner();
-
-      const encryptionKey = generateAes256Key();
-      const { rootHash } = await uploadBrowserFile(
-        file,
-        ZERO_G_TESTNET,
-        signer as ethers.Signer,
-        undefined,
-        { type: "aes256", key: encryptionKey },
-        "dataset",
-      );
-      const hexKey = bytesToHex(encryptionKey);
-
-      return `0g://dataset/${rootHash}?key=${hexKey}`;
+      return body.uri;
     } catch (err: any) {
       console.error("0G Storage upload failed:", err);
       setUploadError(err.message || "Failed to upload file to 0G Storage");

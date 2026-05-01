@@ -227,12 +227,14 @@ export {
   peekEncryptionHeader,
   saveBlobAsFile,
   uploadBrowserFile,
+  uploadServerBytes,
 } from "./storage";
 
 export type {
   DecryptionInput,
   DownloadResult,
   EncryptionInput,
+  ServerUploadInput,
   UploadResult,
   ZeroGNetworkConfig,
 } from "./storage";

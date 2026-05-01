@@ -223,6 +223,7 @@ async function runZeroGComputeIfConfigured(plan: GenericDemoPlanOutput): Promise
   const model = process.env.ZERO_G_COMPUTE_MODEL;
   const serviceUrl = process.env.ZERO_G_COMPUTE_SERVICE_URL;
   const hasSecret = Boolean(process.env.ZERO_G_COMPUTE_API_SECRET);
+  const timeoutMs = parseComputeTimeout();
 
   if (!providerAddress || !model || !serviceUrl || !hasSecret) {
     return {
@@ -234,20 +235,24 @@ async function runZeroGComputeIfConfigured(plan: GenericDemoPlanOutput): Promise
   }
 
   try {
-    const result = await runInference({
-      providerAddress,
-      systemPrompt: buildComputeSystemPrompt(plan),
-      userPrompt: [
-        `Agent: ${plan.agentName}`,
-        `Domain: ${plan.domain}`,
-        `Accepted format: ${plan.acceptedFormat}`,
-        ...(plan.agentPrompt ? ["", "Agent instructions from iNFT metadata:", plan.agentPrompt] : []),
-        "",
-        "Dataset:",
-        plan.datasetText.slice(0, 6000)
-      ].join("\n"),
-      maxTokens: 256
-    });
+    const result = await withTimeout(
+      runInference({
+        providerAddress,
+        systemPrompt: buildComputeSystemPrompt(plan),
+        userPrompt: [
+          `Agent: ${plan.agentName}`,
+          `Domain: ${plan.domain}`,
+          `Accepted format: ${plan.acceptedFormat}`,
+          ...(plan.agentPrompt ? ["", "Agent instructions from iNFT metadata:", plan.agentPrompt] : []),
+          "",
+          "Dataset:",
+          plan.datasetText.slice(0, 6000)
+        ].join("\n"),
+        maxTokens: 256
+      }),
+      timeoutMs,
+      `0G Compute timed out after ${timeoutMs}ms`
+    );
 
     return {
       mode: "real",
@@ -303,8 +308,34 @@ function parseRequestTimeout(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 2_000;
 }
 
+function parseComputeTimeout(): number {
+  const parsed = Number(process.env.ZERO_G_COMPUTE_TIMEOUT_MS ?? "20000");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 20_000;
+}
+
 function shouldAuditToApi(): boolean {
   return process.env.AXL_AUDIT_TO_API !== "0";
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function extractJob(message: AxlMessage): AnalysisJob {

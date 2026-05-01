@@ -27,8 +27,7 @@ for key in \
   AXL_NODE_ANALYZER_PEER_ID \
   AXL_NODE_CRITIC_URL \
   AXL_NODE_CRITIC_PEER_ID \
-  AXL_NODE_REPORTER_URL \
-  AXL_NODE_REPORTER_PEER_ID
+  AXL_NODE_REPORTER_URL
 do
   pnpm dlx @railway/cli variable delete "$key" \
     --service "$SERVICE" \
