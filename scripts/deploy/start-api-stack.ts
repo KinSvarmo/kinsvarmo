@@ -39,23 +39,48 @@ let childEnv = {
 process.on("SIGINT", stopAll);
 process.on("SIGTERM", stopAll);
 
+process.on("uncaughtException", (caught) => {
+  console.error("[fatal] uncaughtException", formatError(caught));
+  stopAll(1);
+});
+
+process.on("unhandledRejection", (caught) => {
+  console.error("[fatal] unhandledRejection", formatError(caught));
+  stopAll(1);
+});
+
 void main().catch((caught) => {
-  console.error(caught instanceof Error ? caught.message : caught);
+  console.error("[fatal] API stack failed to start", formatError(caught));
   stopAll(1);
 });
 
 async function main(): Promise<void> {
-  console.log("Starting KinSvarmo production API stack");
-  console.log(`Mode: ${process.env.NODE_ENV ?? "production"}`);
-  console.log(`AXL transport: ${process.env.AXL_TRANSPORT ?? "local"}`);
-  console.log(`Start real AXL nodes: ${shouldStartRealAxlNodes ? "yes" : "no"}`);
-  console.log(`Start local AXL nodes: ${shouldStartLocalAxlNodes ? "yes" : "no"}`);
-  console.log(`Start agent workers: ${shouldStartWorkers ? "yes" : "no"}`);
-  console.log(`API port: ${apiPort}`);
+  console.log("[startup] Starting KinSvarmo production API stack");
+  console.log(
+    JSON.stringify({
+      event: "api-stack.config",
+      mode: process.env.NODE_ENV ?? "production",
+      axlTransport: process.env.AXL_TRANSPORT ?? "local",
+      startRealAxlNodes: shouldStartRealAxlNodes,
+      startLocalAxlNodes: shouldStartLocalAxlNodes,
+      startWorkers: shouldStartWorkers,
+      apiPort,
+      gatewayPort: gatewayPort ?? null,
+      rootDir,
+      axlRealDir: process.env.AXL_REAL_DIR ?? null,
+      platformPort: process.env.PORT ?? null,
+      httpPort: process.env.HTTP_PORT ?? null,
+      railwayHealthPort: process.env.RAILWAY_HEALTH_PORT ?? null
+    })
+  );
+
   startGatewayIfNeeded();
 
   if (shouldStartRealAxlNodes) {
+    console.log("[startup] Starting real AXL nodes");
     start("axl:real:nodes", ["pnpm", "exec", "tsx", "scripts/axl/start-real-axl-network.ts"]);
+
+    console.log("[startup] Waiting for real AXL peer IDs");
     const peerIds = await waitForRealAxlPeerIds();
     childEnv = {
       ...childEnv,
@@ -70,18 +95,31 @@ async function main(): Promise<void> {
   }
 
   if (shouldStartLocalAxlNodes) {
+    console.log("[startup] Starting local AXL nodes");
     start("axl:nodes", ["pnpm", "axl:nodes"]);
   }
 
   if (shouldStartWorkers) {
+    console.log("[startup] Starting agent workers");
     start("axl:workers", ["pnpm", "axl:workers"]);
   }
 
+  console.log("[startup] Starting API process");
   start("api", ["pnpm", "--filter", "@kingsvarmo/api", "start:prod"]);
+
+  probeApiHealthSoon();
 }
 
 function startGatewayIfNeeded(): void {
   if (!gatewayPort || gatewayPort === apiPort) {
+    console.log(
+      JSON.stringify({
+        event: "api-gateway.skipped",
+        reason: !gatewayPort ? "gateway_port_not_set" : "gateway_port_equals_api_port",
+        apiPort,
+        gatewayPort: gatewayPort ?? null
+      })
+    );
     return;
   }
 
@@ -92,7 +130,18 @@ function startGatewayIfNeeded(): void {
   }
 
   gatewayServer = createServer((incoming, outgoing) => {
-    if (incoming.url?.startsWith("/health")) {
+    const startedAt = Date.now();
+    const path = incoming.url ?? "/";
+
+    if (path.startsWith("/health")) {
+      console.log(
+        JSON.stringify({
+          event: "api-gateway.healthcheck",
+          method: incoming.method,
+          path,
+          statusCode: 200
+        })
+      );
       outgoing.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       outgoing.end(
         JSON.stringify({
@@ -109,17 +158,36 @@ function startGatewayIfNeeded(): void {
       {
         hostname: "127.0.0.1",
         port: apiPort,
-        path: incoming.url,
+        path,
         method: incoming.method,
         headers: incoming.headers
       },
       (response) => {
-        outgoing.writeHead(response.statusCode ?? 502, response.headers);
+        const statusCode = response.statusCode ?? 502;
+        console.log(
+          JSON.stringify({
+            event: "api-gateway.proxy.response",
+            method: incoming.method,
+            path,
+            statusCode,
+            durationMs: Date.now() - startedAt
+          })
+        );
+        outgoing.writeHead(statusCode, response.headers);
         response.pipe(outgoing);
       }
     );
 
     upstream.on("error", (caught) => {
+      console.error(
+        JSON.stringify({
+          event: "api-gateway.proxy.error",
+          method: incoming.method,
+          path,
+          durationMs: Date.now() - startedAt,
+          error: caught instanceof Error ? caught.message : "Unknown upstream error"
+        })
+      );
       outgoing.writeHead(502, { "content-type": "application/json; charset=utf-8" });
       outgoing.end(
         JSON.stringify({
@@ -130,6 +198,11 @@ function startGatewayIfNeeded(): void {
     });
 
     incoming.pipe(upstream);
+  });
+
+  gatewayServer.on("error", (caught) => {
+    console.error("[api-gateway] server error", formatError(caught));
+    stopAll(1);
   });
 
   gatewayServer.listen(port, "0.0.0.0", () => {
@@ -158,6 +231,18 @@ function resolveApiPort(): string {
 
 function start(label: string, command: [string, ...string[]]): void {
   const [bin, ...args] = command;
+
+  console.log(
+    JSON.stringify({
+      event: "child.starting",
+      label,
+      command: [bin, ...args].join(" "),
+      cwd: rootDir,
+      apiPort: childEnv.API_PORT,
+      port: childEnv.PORT
+    })
+  );
+
   const child = spawn(bin, args, {
     cwd: rootDir,
     env: childEnv,
@@ -166,13 +251,36 @@ function start(label: string, command: [string, ...string[]]): void {
 
   children.push(child);
 
+  console.log(
+    JSON.stringify({
+      event: "child.spawned",
+      label,
+      pid: child.pid ?? null
+    })
+  );
+
   child.stdout?.on("data", (chunk: Buffer) => {
     process.stdout.write(prefixLines(label, chunk.toString()));
   });
   child.stderr?.on("data", (chunk: Buffer) => {
     process.stderr.write(prefixLines(`${label}:err`, chunk.toString()));
   });
-  child.on("exit", (code) => {
+  child.on("error", (caught) => {
+    console.error(`[${label}] failed to spawn`, formatError(caught));
+    stopAll(1);
+  });
+  child.on("exit", (code, signal) => {
+    console.log(
+      JSON.stringify({
+        event: "child.exited",
+        label,
+        pid: child.pid ?? null,
+        code,
+        signal,
+        shuttingDown
+      })
+    );
+
     if (!shuttingDown && code !== 0) {
       console.error(`[${label}] exited with code ${code ?? "unknown"}`);
       stopAll(1);
@@ -181,14 +289,47 @@ function start(label: string, command: [string, ...string[]]): void {
 }
 
 async function waitForRealAxlPeerIds(): Promise<Awaited<ReturnType<typeof readRealAxlPeerIds>>> {
-  const deadline = Date.now() + Number(process.env.AXL_REAL_START_TIMEOUT_MS ?? "30000");
+  const timeoutMs = Number(process.env.AXL_REAL_START_TIMEOUT_MS ?? "30000");
+  const deadline = Date.now() + timeoutMs;
   let lastError: unknown;
+  let attempt = 0;
+
+  console.log(
+    JSON.stringify({
+      event: "real-axl.wait.start",
+      timeoutMs,
+      nodes: getRealAxlNodes().map((node) => node.participant)
+    })
+  );
 
   while (Date.now() < deadline) {
+    attempt += 1;
+
     try {
-      return await readRealAxlPeerIds(getRealAxlNodes());
+      const peerIds = await readRealAxlPeerIds(getRealAxlNodes());
+      console.log(
+        JSON.stringify({
+          event: "real-axl.wait.ready",
+          attempt,
+          elapsedMs: timeoutMs - Math.max(0, deadline - Date.now()),
+          participants: Object.keys(peerIds)
+        })
+      );
+      return peerIds;
     } catch (caught) {
       lastError = caught;
+
+      if (attempt === 1 || attempt % 5 === 0) {
+        console.warn(
+          JSON.stringify({
+            event: "real-axl.wait.retrying",
+            attempt,
+            remainingMs: Math.max(0, deadline - Date.now()),
+            error: caught instanceof Error ? caught.message : "unknown startup error"
+          })
+        );
+      }
+
       await sleep(750);
     }
   }
@@ -198,6 +339,70 @@ async function waitForRealAxlPeerIds(): Promise<Awaited<ReturnType<typeof readRe
       lastError instanceof Error ? lastError.message : "unknown startup error"
     }`
   );
+}
+
+function probeApiHealthSoon(): void {
+  const delaysMs = [1500, 5000, 15000];
+
+  for (const delayMs of delaysMs) {
+    setTimeout(() => {
+      void probeApiHealth(delayMs);
+    }, delayMs).unref();
+  }
+}
+
+async function probeApiHealth(delayMs: number): Promise<void> {
+  const startedAt = Date.now();
+
+  await new Promise<void>((resolve) => {
+    const probe = request(
+      {
+        hostname: "127.0.0.1",
+        port: apiPort,
+        path: "/health",
+        method: "GET",
+        timeout: 5000
+      },
+      (response) => {
+        let body = "";
+
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          console.log(
+            JSON.stringify({
+              event: "api.health.probe",
+              delayMs,
+              statusCode: response.statusCode ?? null,
+              durationMs: Date.now() - startedAt,
+              body: body.slice(0, 500)
+            })
+          );
+          resolve();
+        });
+      }
+    );
+
+    probe.on("timeout", () => {
+      probe.destroy(new Error("health probe timed out"));
+    });
+
+    probe.on("error", (caught) => {
+      console.error(
+        JSON.stringify({
+          event: "api.health.probe.error",
+          delayMs,
+          durationMs: Date.now() - startedAt,
+          error: caught instanceof Error ? caught.message : "unknown health probe error"
+        })
+      );
+      resolve();
+    });
+
+    probe.end();
+  });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -210,15 +415,25 @@ function stopAll(code = 0): void {
   }
 
   shuttingDown = true;
-  console.log("\nStopping KinSvarmo production API stack...");
+  console.log(`\n[shutdown] Stopping KinSvarmo production API stack with exit code ${code}`);
 
   for (const child of children) {
     if (!child.killed) {
+      console.log(
+        JSON.stringify({
+          event: "child.kill",
+          pid: child.pid ?? null,
+          signal: "SIGTERM"
+        })
+      );
       child.kill("SIGTERM");
     }
   }
 
-  gatewayServer?.close();
+  if (gatewayServer) {
+    console.log("[shutdown] Closing API gateway");
+    gatewayServer.close();
+  }
 
   setTimeout(() => process.exit(code), 750).unref();
 }
@@ -228,4 +443,12 @@ function prefixLines(label: string, text: string): string {
     .split(/\r?\n/)
     .map((line) => (line.length > 0 ? `[${label}] ${line}` : line))
     .join("\n");
+}
+
+function formatError(caught: unknown): string {
+  if (caught instanceof Error) {
+    return caught.stack ?? caught.message;
+  }
+
+  return String(caught);
 }
