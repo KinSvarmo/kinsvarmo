@@ -72,6 +72,8 @@ sequenceDiagram
   API-->>Web: Status and result
 ```
 
+
+
 ## System Architecture
 
 ```mermaid
@@ -91,6 +93,8 @@ flowchart LR
   Reporter --> API
   API --> Web
 ```
+
+
 
 ## Technology Roles
 
@@ -136,6 +140,8 @@ sequenceDiagram
   Critic->>Reporter: critic.reviewed
   Reporter->>API: report.generated
 ```
+
+
 
 The job page displays this message history. The topology endpoint displays the connected AXL peers:
 
@@ -203,6 +209,8 @@ flowchart TB
   ReporterWorker --> ReporterNode
 ```
 
+
+
 ### Vercel
 
 Vercel hosts the user-facing web application and the web-side routes used for 0G storage operations. The production application is:
@@ -245,106 +253,6 @@ Node statuses
 Recent logs
 ```
 
-## Important URLs
-
-Landing page:
-
-```text
-https://kinsvarmoui.vercel.app/
-```
-
-Documentation:
-
-```text
-https://kinsvarmo-docs.vercel.app/guide/getting-started.html
-```
-
-Application:
-
-```text
-https://kinsvarmo-app.vercel.app
-```
-
-API health:
-
-```text
-https://kingsvarmoapi-production.up.railway.app/health
-```
-
-API readiness:
-
-```text
-https://kingsvarmoapi-production.up.railway.app/ready
-```
-
-AXL topology:
-
-```text
-https://kingsvarmoapi-production.up.railway.app/api/axl/topology
-```
-
-Job messages:
-
-```text
-https://kingsvarmoapi-production.up.railway.app/api/jobs/JOB_ID/messages
-```
-
-Job result:
-
-```text
-https://kingsvarmoapi-production.up.railway.app/api/jobs/JOB_ID/result
-```
-
-KeeperHub job record:
-
-```text
-https://kingsvarmoapi-production.up.railway.app/api/jobs/JOB_ID/keeperhub
-```
-
-## Data And State
-
-Browser:
-
-```text
-Wallet session and transient UI state.
-```
-
-Vercel:
-
-```text
-Web application and 0G storage proxy routes.
-```
-
-Railway:
-
-```text
-API process, AXL nodes, hosted workers, and live job state for the running process.
-```
-
-KeeperHub:
-
-```text
-Workflow execution record for each started job.
-```
-
-0G Galileo:
-
-```text
-Contract state and usage authorization transaction.
-```
-
-0G Storage:
-
-```text
-Dataset and metadata references when storage is used.
-```
-
-0G Compute:
-
-```text
-Analyzer inference response and provider metadata.
-```
-
 ## Current Scope
 
 The current build demonstrates:
@@ -362,4 +270,3 @@ Result page with structured JSON
 Workspace submission flow
 ```
 
-The hosted build is configured for live execution and inspection through the application, job pages, result pages, and public status endpoints.
