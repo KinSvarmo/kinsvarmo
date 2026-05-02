@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createAxlNodeMapFromEnv, type AxlNodeMap, type AxlParticipant } from "@kingsvarmo/axl-client";
@@ -96,11 +96,7 @@ export function prepareRealAxlFiles(
   paths = getRealAxlPaths(),
   portOffset = parseRealPortOffset()
 ): RealAxlNode[] {
-  if (!existsSync(paths.nodeBinaryPath)) {
-    throw new Error(
-      `Real AXL node binary not found at ${paths.nodeBinaryPath}. Run: cd ${paths.axlDir} && make build`
-    );
-  }
+  ensureRealAxlBinary(paths);
 
   mkdirSync(paths.keyDir, {
     recursive: true
@@ -117,6 +113,40 @@ export function prepareRealAxlFiles(
   }
 
   return nodes;
+}
+
+export function ensureRealAxlBinary(paths = getRealAxlPaths()): void {
+  if (existsSync(paths.nodeBinaryPath)) {
+    return;
+  }
+
+  mkdirSync(paths.axlDir, {
+    recursive: true
+  });
+
+  const sourceDir = join(paths.axlDir, ".axl-src");
+  const sourceLooksValid = existsSync(join(sourceDir, "go.mod"));
+
+  if (!sourceLooksValid) {
+    rmSync(sourceDir, {
+      recursive: true,
+      force: true
+    });
+
+    runCommand("git", [
+      "clone",
+      "--depth=1",
+      "https://github.com/gensyn-ai/axl.git",
+      sourceDir
+    ], paths.axlDir);
+  }
+
+  runCommand("go", [
+    "build",
+    "-o",
+    paths.nodeBinaryPath,
+    "./cmd/node/"
+  ], sourceDir);
 }
 
 export function buildRealAxlEnv(
@@ -287,6 +317,19 @@ function ensureKey(path: string): void {
   if (result.status !== 0) {
     throw new Error(
       `Could not generate ed25519 key at ${path}: ${result.stderr.toString()}`
+    );
+  }
+}
+
+function runCommand(command: string, args: string[], cwd: string): void {
+  const result = spawnSync(command, args, {
+    cwd,
+    stdio: "inherit"
+  });
+
+  if (result.status !== 0) {
+    throw new Error(
+      `Command failed: ${command} ${args.join(" ")}`
     );
   }
 }

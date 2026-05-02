@@ -23,14 +23,8 @@ const shouldStartLocalAxlNodes =
 
 const shouldStartWorkers = process.env.AXL_START_WORKERS !== "0";
 
-/**
- * Railway sends public traffic to process.env.PORT.
- * The gateway owns that public port immediately.
- * The real API runs on an internal port behind the gateway.
- */
-const publicPort = resolvePublicPort();
-const apiPort = resolveInternalApiPort(publicPort);
-const gatewayPort = publicPort;
+const apiPort = resolveApiPort();
+const gatewayPort = cleanEnvValue(process.env.API_GATEWAY_PORT);
 
 const reporterPeerId = cleanEnvValue(process.env.AXL_NODE_REPORTER_PEER_ID);
 const reporterPeerIdFallback = cleanEnvValue(process.env.AXL_REPORTER_PEER_ID);
@@ -49,10 +43,6 @@ let childEnv: NodeJS.ProcessEnv = {
   ...localAxlEnv,
   NODE_ENV: process.env.NODE_ENV ?? "production",
 
-  /**
-   * Force the API child process to use the internal port.
-   * Railway/public traffic goes to the gateway.
-   */
   API_PORT: apiPort,
   PORT: apiPort
 };
@@ -116,11 +106,8 @@ async function main(): Promise<void> {
       startRealAxlNodes: shouldStartRealAxlNodes,
       startLocalAxlNodes: shouldStartLocalAxlNodes,
       startWorkers: shouldStartWorkers,
-      publicPort,
       apiPort,
-      gatewayPort,
       PORT: process.env.PORT ?? null,
-      INTERNAL_API_PORT: process.env.INTERNAL_API_PORT ?? null,
       API_PORT: process.env.API_PORT ?? null,
       HTTP_PORT: process.env.HTTP_PORT ?? null,
       API_GATEWAY_PORT: process.env.API_GATEWAY_PORT ?? null,
@@ -134,12 +121,10 @@ async function main(): Promise<void> {
     })
   );
 
-  /**
-   * Start this before AXL and API.
-   * Railway healthcheck must get a response immediately.
-   */
-  console.log("[startup] Starting API gateway before AXL/API");
-  startGateway();
+  if (gatewayPort && gatewayPort !== apiPort) {
+    console.log("[startup] Starting API gateway before AXL/API");
+    startGateway();
+  }
 
   if (shouldStartRealAxlNodes) {
     console.log("[startup] Starting real AXL nodes");
@@ -196,12 +181,15 @@ async function main(): Promise<void> {
 }
 
 function startGateway(): void {
+  if (!gatewayPort) {
+    return;
+  }
+
   const port = Number(gatewayPort);
 
   console.log(
     JSON.stringify({
       event: "api-gateway.start_attempt",
-      publicPort,
       apiPort,
       gatewayPort
     })
@@ -250,7 +238,6 @@ function startGateway(): void {
           ok: true,
           service: "kingsvarmo-api-gateway",
           status: "booting-or-ready",
-          publicPort,
           apiPort,
           gatewayPort
         })
@@ -317,22 +304,18 @@ function startGateway(): void {
   });
 }
 
-function resolvePublicPort(): string {
-  return process.env.PORT ?? "8080";
-}
-
-function resolveInternalApiPort(currentPublicPort: string): string {
-  const requestedInternalPort = cleanEnvValue(process.env.INTERNAL_API_PORT);
-
-  if (requestedInternalPort && requestedInternalPort !== currentPublicPort) {
-    return requestedInternalPort;
+function resolveApiPort(): string {
+  const explicitApiPort = cleanEnvValue(process.env.API_PORT);
+  if (explicitApiPort) {
+    return explicitApiPort;
   }
 
-  if (currentPublicPort === "18080") {
-    return "18081";
+  const explicitHttpPort = cleanEnvValue(process.env.HTTP_PORT);
+  if (explicitHttpPort) {
+    return explicitHttpPort;
   }
 
-  return "18080";
+  return "8080";
 }
 
 function start(label: string, command: [string, ...string[]]): void {
