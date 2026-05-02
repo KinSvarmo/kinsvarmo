@@ -24,31 +24,47 @@ const shouldStartLocalAxlNodes =
 const shouldStartWorkers = process.env.AXL_START_WORKERS !== "0";
 
 /**
- * Railway sends traffic to process.env.PORT.
- * The gateway must own that public port immediately.
+ * Railway sends public traffic to process.env.PORT.
+ * The gateway owns that public port immediately.
  * The real API runs on an internal port behind the gateway.
  */
 const publicPort = resolvePublicPort();
 const apiPort = resolveInternalApiPort(publicPort);
 const gatewayPort = publicPort;
 
+const reporterPeerId = cleanEnvValue(process.env.AXL_NODE_REPORTER_PEER_ID);
+const reporterPeerIdFallback = cleanEnvValue(process.env.AXL_REPORTER_PEER_ID);
+const remoteReporterPeerId = cleanEnvValue(process.env.AXL_REMOTE_REPORTER_PEER_ID);
+
+const normalizedReporterPeerId =
+  reporterPeerId ?? reporterPeerIdFallback ?? remoteReporterPeerId;
+
 const localAxlEnv =
   shouldStartLocalAxlNodes || process.env.AXL_TRANSPORT !== "real"
     ? buildLocalAxlEnv(Number(process.env.AXL_LOCAL_PORT_OFFSET ?? "0"))
     : {};
 
-let childEnv = {
+let childEnv: NodeJS.ProcessEnv = {
   ...process.env,
   ...localAxlEnv,
   NODE_ENV: process.env.NODE_ENV ?? "production",
 
   /**
    * Force the API child process to use the internal port.
-   * Do not let it bind to Railway's public PORT.
+   * Railway/public traffic goes to the gateway.
    */
   API_PORT: apiPort,
   PORT: apiPort
 };
+
+if (normalizedReporterPeerId) {
+  childEnv = {
+    ...childEnv,
+    AXL_NODE_REPORTER_PEER_ID: normalizedReporterPeerId,
+    AXL_REPORTER_PEER_ID: normalizedReporterPeerId,
+    AXL_REMOTE_REPORTER_PEER_ID: normalizedReporterPeerId
+  };
+}
 
 process.on("SIGINT", () => stopAll(0));
 process.on("SIGTERM", () => stopAll(0));
@@ -110,7 +126,11 @@ async function main(): Promise<void> {
       API_GATEWAY_PORT: process.env.API_GATEWAY_PORT ?? null,
       RAILWAY_HEALTH_PORT: process.env.RAILWAY_HEALTH_PORT ?? null,
       DISABLE_API_GATEWAY: process.env.DISABLE_API_GATEWAY ?? null,
-      AXL_REAL_DIR: process.env.AXL_REAL_DIR ?? null
+      AXL_REAL_DIR: process.env.AXL_REAL_DIR ?? null,
+      AXL_NODE_REPORTER_PEER_ID_RAW: maskValue(process.env.AXL_NODE_REPORTER_PEER_ID),
+      AXL_NODE_REPORTER_PEER_ID_NORMALIZED: maskValue(normalizedReporterPeerId),
+      AXL_REPORTER_PEER_ID_RAW: maskValue(process.env.AXL_REPORTER_PEER_ID),
+      AXL_REMOTE_REPORTER_PEER_ID_RAW: maskValue(process.env.AXL_REMOTE_REPORTER_PEER_ID)
     })
   );
 
@@ -140,10 +160,20 @@ async function main(): Promise<void> {
       ...buildRealAxlEnv(peerIds)
     };
 
+    if (normalizedReporterPeerId) {
+      childEnv = {
+        ...childEnv,
+        AXL_NODE_REPORTER_PEER_ID: normalizedReporterPeerId,
+        AXL_REPORTER_PEER_ID: normalizedReporterPeerId,
+        AXL_REMOTE_REPORTER_PEER_ID: normalizedReporterPeerId
+      };
+    }
+
     console.log(
       JSON.stringify({
         event: "real-axl.env.ready",
-        participants: Object.keys(peerIds)
+        participants: Object.keys(peerIds),
+        reporterPeerId: maskValue(childEnv.AXL_NODE_REPORTER_PEER_ID)
       })
     );
   }
@@ -292,7 +322,7 @@ function resolvePublicPort(): string {
 }
 
 function resolveInternalApiPort(currentPublicPort: string): string {
-  const requestedInternalPort = process.env.INTERNAL_API_PORT;
+  const requestedInternalPort = cleanEnvValue(process.env.INTERNAL_API_PORT);
 
   if (requestedInternalPort && requestedInternalPort !== currentPublicPort) {
     return requestedInternalPort;
@@ -313,7 +343,9 @@ function start(label: string, command: [string, ...string[]]): void {
       event: "child.starting",
       label,
       command: [bin, ...args].join(" "),
-      cwd: rootDir
+      cwd: rootDir,
+      reporterPeerId:
+        label === "api" ? maskValue(childEnv.AXL_NODE_REPORTER_PEER_ID) : undefined
     })
   );
 
@@ -499,6 +531,37 @@ function probeApiHealth(delayMs: number): Promise<void> {
 
     probe.end();
   });
+}
+
+function cleanEnvValue(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+
+  return trimmed;
+}
+
+function maskValue(value: string | undefined): string | null {
+  const cleaned = cleanEnvValue(value);
+
+  if (!cleaned) {
+    return null;
+  }
+
+  if (cleaned.length <= 16) {
+    return "***";
+  }
+
+  return `${cleaned.slice(0, 8)}...${cleaned.slice(-8)}`;
 }
 
 function sleep(ms: number): Promise<void> {
