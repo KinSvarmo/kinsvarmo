@@ -158,8 +158,23 @@ The KeeperHub workflow records:
 ```text
 Job payload received
 Payload fields validated
+KeeperHub audit log created
 AXL dispatch recorded
 Workflow record finalized
+```
+
+Current KeeperHub workflow:
+
+```mermaid
+flowchart LR
+  Start[KinSvarmo job payload] --> Trigger[KinSvarmo Job Started]
+  Trigger --> Validate[Validate Job Payload]
+  Validate --> Audit[Create KeeperHub Audit Log]
+  Audit --> Dispatch[Prepare AXL Dispatch Audit]
+  Dispatch --> Finalize[Finalize KeeperHub Record]
+
+  Validate --> Fields[jobId, agentId, filename, uploadReference, wallet context]
+  Finalize --> UI[Job page KeeperHub panel]
 ```
 
 The job page displays the KeeperHub execution ID, workflow ID, node statuses, recent logs, and workflow trace.
@@ -269,4 +284,3 @@ Job status page
 Result page with structured JSON
 Workspace submission flow
 ```
-
