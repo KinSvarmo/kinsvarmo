@@ -64,6 +64,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
   const server = Fastify({
     logger: true
   });
+
   const axlClient = options.axlClient ?? createBackendAxlClient();
   const keeperHubClient = options.keeperHubClient ?? createBackendKeeperHubClient();
   const store = options.store ?? createInMemoryJobStore();
@@ -93,8 +94,27 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
 
   server.get("/api/axl/topology", async () => {
     const participants = ["api", "planner", "analyzer", "critic", "reporter"] as const;
+
     const nodes = await Promise.all(
       participants.map(async (participant) => {
+        if (participant === "reporter") {
+          const reporterPeerId =
+            cleanEnvValue(process.env.AXL_NODE_REPORTER_PEER_ID) ??
+            cleanEnvValue(process.env.AXL_REPORTER_PEER_ID) ??
+            cleanEnvValue(process.env.AXL_REMOTE_REPORTER_PEER_ID);
+
+          return {
+            participant,
+            configured: Boolean(reporterPeerId),
+            reachable: false,
+            remote: true,
+            peerId: reporterPeerId ?? null,
+            ipv6: null,
+            peers: [],
+            tree: null
+          };
+        }
+
         try {
           const topology = await axlClient.topology(participant);
 
@@ -102,6 +122,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
             participant,
             configured: true,
             reachable: true,
+            remote: false,
             peerId: topology.ourPublicKey ?? null,
             ipv6: topology.ourIpv6 ?? null,
             peers: topology.peers,
@@ -112,8 +133,11 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
             participant,
             configured: false,
             reachable: false,
+            remote: false,
             peerId: null,
             ipv6: null,
+            peers: [],
+            tree: null,
             error: caught instanceof Error ? caught.message : "Topology unavailable"
           };
         }
@@ -122,6 +146,11 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
 
     return {
       transport: process.env.AXL_TRANSPORT ?? "local",
+      reporterPeerIdConfigured: Boolean(
+        cleanEnvValue(process.env.AXL_NODE_REPORTER_PEER_ID) ??
+          cleanEnvValue(process.env.AXL_REPORTER_PEER_ID) ??
+          cleanEnvValue(process.env.AXL_REMOTE_REPORTER_PEER_ID)
+      ),
       nodes
     };
   });
@@ -180,6 +209,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
       storageReference:
         parsed.data.storageReference ?? `local://metadata/${slug}`
     };
+
     const agent = store.createAgent(agentInput);
 
     return reply.code(201).send({
@@ -201,11 +231,10 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
       agentId: parsed.data.agentId,
       userWallet: parsed.data.userWallet,
       filename: parsed.data.filename,
-      ...(parsed.data.uploadReference
-        ? { uploadReference: parsed.data.uploadReference }
-        : {}),
+      ...(parsed.data.uploadReference ? { uploadReference: parsed.data.uploadReference } : {}),
       ...(parsed.data.inputMetadata ? { inputMetadata: parsed.data.inputMetadata } : {})
     };
+
     const job = store.createJob(jobInput);
 
     return reply.code(201).send({
@@ -358,6 +387,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
     const resultHash = result
       ? createHash("sha256").update(JSON.stringify(result)).digest("hex")
       : null;
+
     let keeperHubRun: KeeperHubRun | null = null;
     let keeperHubLogs: KeeperHubLogEntry[] = [];
 
@@ -558,6 +588,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
       instructions: parsed.data.instructions,
       ...(parsed.data.dueDate ? { dueDate: parsed.data.dueDate } : {})
     };
+
     const assignment = store.createAssignment(assignmentInput);
 
     return reply.code(201).send({
@@ -623,6 +654,7 @@ export async function buildApiServer(options: BuildApiServerOptions = {}) {
         assignmentId
       }
     });
+
     const submission = store.createSubmission({
       assignmentId,
       studentName: parsed.data.studentName,
@@ -659,10 +691,28 @@ function normalizeDomain(value: string): string {
 
 function parseAllowedOrigins(): string[] {
   const raw = process.env.CORS_ORIGINS ?? process.env.WEB_ORIGIN ?? "";
+
   return raw
     .split(",")
     .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean);
+}
+
+function cleanEnvValue(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+
+  return trimmed;
 }
 
 function extractZeroGCompute(structuredJson: Record<string, unknown>): unknown {
